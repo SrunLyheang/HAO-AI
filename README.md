@@ -14,6 +14,11 @@ npm run lint
 ```
 
 Copy `.env.example` to `.env.local` for local secrets; `.env*` is git-ignored.
+Set `DEEPSEEK_API_KEY` there to exercise the typed conversation loop (Unit 1).
+
+```bash
+npm test        # vitest: pinyin heteronyms + model-output validation
+```
 
 ## Deploy
 

@@ -5,13 +5,31 @@ change.
 
 ## Current Phase
 
-- In progress — Unit 0 (Skeleton + deploy pipeline).
+- In progress — Unit 1 (Text conversation loop, dev harness). Backend + typed
+  harness landed; awaiting a real `DEEPSEEK_API_KEY` for the end-to-end
+  browser check.
 
 ## Current Goal
 
-- Unit 0a: local Next.js skeleton that builds. Then Unit 0b: deploy pipeline.
+- Verify Unit 1 done-criteria against a live DeepSeek key, then Unit 2.
 
 ## Completed
+
+- 2026-09-10: Unit 1 implemented. `pinyin-pro` + `vitest` added (`@types/node`
+  bumped 20→24 to match the Node 26 runtime and clear a vitest peer conflict;
+  `npm audit` clean). New: `types/index.ts` (`ChatResponse`, `Turn`, `AiTurn`),
+  `lib/pinyin.ts` (`toPinyin` + bounded 得/还 heteronym correction pass with a
+  named ceiling), `lib/deepseek.ts` (fetch to the OpenAI-compatible endpoint,
+  sole reader of `DEEPSEEK_API_KEY`), `app/api/chat/validate.ts`
+  (`parseChatResponse`, fence-stripping, retry-once contract), `app/api/chat/
+  route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → pinyin
+  → `AiTurn`), `app/page.tsx` rewritten as the typed harness with a hardcoded
+  greeting and a native `<details>` correction. Tests: `test/pinyin.test.ts`
+  (heteronyms 还/得/长/银行 + formatting), `test/chat-validation.test.ts`
+  (validator cases). `npm run build`, `npm run lint`, `npm test` (29) green.
+  Route error branches curl-checked: 400 bad body / >500 chars, 405 GET, 500
+  missing key (no key leak). Spec at
+  `features/back/unit-1-text-conversation-loop.md`.
 
 - 2026-09-10: Unit 0 split into 0a (local skeleton) and 0b (deploy pipeline);
   specs written to `context/feature-spec/unit-0a-local-skeleton.md` and
@@ -28,7 +46,9 @@ change.
 
 ## In Progress
 
-- None. Unit 0a is complete and verified.
+- Unit 1 verification: needs a live `DEEPSEEK_API_KEY` in `.env.local` to hold
+  a real typed conversation and eyeball the 还/得/长/银行 pinyin + the
+  correction toggle in the browser. All non-provider paths already checked.
 
 ## Verified
 
@@ -42,9 +62,10 @@ change.
 ## Next Up
 
 - Unit 0a: DONE (committed, `96fc49b`).
-- Unit 0b: DEFERRED by the user (see "Deferred" below). Proceed to Unit 1
-  building locally only — no deploy, no remote push — until the deploy pipeline
-  is set up near the end.
+- Unit 0b: DEFERRED by the user (see "Deferred" below). Building locally only —
+  no deploy, no remote push — until the deploy pipeline is set up near the end.
+- Unit 1: code + tests done, committed. Blocked on a DeepSeek key for the final
+  browser check, then move to Unit 2 (HSK level control).
 
 ## Open Questions
 
