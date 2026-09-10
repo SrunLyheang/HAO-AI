@@ -1,8 +1,12 @@
 # Feature Spec — Unit 0b: Deploy Pipeline
 
+> **DEFERRED (2026-09-10, user decision).** Build Units 1–9 locally first with no
+> deploy and no remote push. Do this unit right before Unit 10. The user has
+> created a private GitHub repo but not the Vercel project / env vars /
+> Deployment Protection. See `context/progress-tracker.md` → "Deferred".
+>
 > Second half of `build-spec.md` Unit 0. Depends on **Unit 0a** (a local app that
-> builds). When 0b's done criteria are met, Unit 0 is complete and Unit 1 may
-> start.
+> builds). When 0b's done criteria are met, Unit 0 is complete.
 
 ## One sentence
 
