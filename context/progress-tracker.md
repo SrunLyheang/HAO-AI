@@ -28,8 +28,16 @@ change.
 
 ## In Progress
 
-- Unit 0a verification: manual `npm run dev` check of the placeholder page;
-  first git commit.
+- None. Unit 0a is complete and verified.
+
+## Verified
+
+- 2026-09-10: Unit 0a done-criteria re-checked against the spec —
+  `npm run build` green (0 TS errors, `strict: true` intact), `npm run lint`
+  passes, `grep NEXT_PUBLIC` finds nothing, folder skeleton + `.gitkeep`/README
+  stubs present, no stray starter files, `.env*` git-ignored with
+  `!.env.example`, working tree clean. Committed at `01fe891` (0b-defer note
+  in `a799747`).
 
 ## Next Up
 
