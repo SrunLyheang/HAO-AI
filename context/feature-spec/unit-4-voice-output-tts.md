@@ -6,7 +6,12 @@
 > on demand via a replay button. Still no auth, no persistence, no Siri-style
 > UI (those are later units).
 >
-> **Status: DRAFT for review. Do not implement until approved.**
+> **Status: IMPLEMENTED**, pending manual browser verification and commit
+> (see "In Progress" in `context/progress-tracker.md`). Also note: TTS
+> pivoted from Azure Neural TTS to ElevenLabs after this spec was drafted,
+> and the rate is applied client-side (0.75x/1x/1.5x via
+> `HTMLAudioElement.playbackRate`), not sent to the server — see
+> `context/architecture.md`.
 
 ## One sentence
 
@@ -15,6 +20,20 @@ speaking-rate setting) to `/api/speak`, Azure Neural TTS returns audio bytes,
 the browser turns them into a transient object URL and autoplays them via
 `<audio>`; each AI turn also gets a replay button that re-fetches and re-plays
 the same text, and a slow/normal toggle controls the rate of future speech.
+
+**As shipped, not as drafted below:** every `lib/azure-tts.ts` /
+`AZURE_SPEECH_KEY`/`AZURE_SPEECH_REGION` reference in this spec is now
+`lib/elevenlabs-tts.ts` / `ELEVENLABS_API_KEY`/`ELEVENLABS_VOICE_ID` (Azure
+AI Speech isn't available in the user's country; Groq was ruled out first —
+its TTS models don't support Mandarin). Bigger change: `/api/speak`'s
+`SpeakRequest` is `{ text: string }` only — **no `rate` field**.
+ElevenLabs' own speed param is hard-limited to 0.7–1.2, too narrow for this
+app's range, so the server always synthesizes at natural speed and the
+client scales it via `audio.playbackRate` with three values (`0.75 | 1 |
+1.5`, `types/index.ts`'s `SpeakingRate`), not the two-value `"slow" |
+"normal"` described throughout this spec. See `context/architecture.md`
+and `context/progress-tracker.md` for the shipped contract and full pivot
+history.
 
 ## Why this is its own step (`ai-workflow-rules.md` §3)
 

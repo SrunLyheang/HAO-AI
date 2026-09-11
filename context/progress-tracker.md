@@ -436,10 +436,11 @@ route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → 
   60s cap, silence/422) needs a real `GROQ_API_KEY` in `.env.local` and a
   live browser session. Commit is next after that.
 - Unit 4: automated checks (build/lint/test) done. Remaining manual browser
-  check (autoplay on send, replay button, slow/normal rate difference,
-  overlapping-replay no-op, object-URL leak check across many turns, in
-  Chrome + Safari) needs a real `AZURE_SPEECH_KEY`/`AZURE_SPEECH_REGION` in
-  `.env.local` and a live browser session. Commit is next after that.
+  check (autoplay on send, replay button, client-side rate switch across
+  0.75x/1x/1.5x, overlapping-replay no-op, object-URL leak check across many
+  turns, in Chrome + Safari) needs a real `ELEVENLABS_API_KEY`/
+  `ELEVENLABS_VOICE_ID` in `.env.local` and a live browser session. Commit is
+  next after that.
 
 ## Verified
 
@@ -467,7 +468,9 @@ route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → 
 - Unit 3: voice input (STT) — implemented; manual browser verification and
   commit still pending (see "In Progress").
 - Unit 4: voice output (TTS) — implemented; manual browser verification and
-  commit still pending (see "In Progress").
+  commit still pending. Verify autoplay, replay, the client-side rate switch
+  across 0.75x/1x/1.5x, overlapping replay, and object-URL cleanup with
+  `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` (see "In Progress").
 - Unit 5: the one screen + Siri mic — implemented; manual browser verification
   and commit still pending (see "In Progress").
 - Unit 6: auth (Clerk) — spec drafted at

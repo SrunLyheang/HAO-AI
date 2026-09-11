@@ -6,7 +6,10 @@
 > existing `/api/chat` loop unchanged. Still no auth, no persistence, no TTS,
 > no rate limiting — those are later units.
 >
-> **Status: DRAFT for review. Do not implement until approved.**
+> **Status: IMPLEMENTED**, pending manual browser verification and commit
+> (see "In Progress" in `context/progress-tracker.md`). Also note: STT
+> pivoted from OpenAI `gpt-4o-transcribe` to Groq `whisper-large-v3-turbo`
+> after this spec was drafted — see `context/architecture.md`.
 
 ## One sentence
 
@@ -14,6 +17,17 @@ Press-and-hold a mic button → `MediaRecorder` captures audio → on release,
 `POST /api/transcribe` (multipart, size/duration-capped) → OpenAI
 `gpt-4o-transcribe` returns Chinese text → that text is sent through the
 existing typed-message pipeline (`/api/chat`) exactly as if it had been typed.
+
+**As shipped, not as drafted below:** every `lib/openai.ts` /
+`OPENAI_API_KEY` / `gpt-4o-transcribe` reference in this spec is now
+`lib/groq-stt.ts` / `GROQ_API_KEY` / `whisper-large-v3-turbo` (Groq's
+OpenAI-compatible endpoint) — three provider pivots happened after this
+spec was drafted (OpenAI billing didn't work, a local-Whisper detour didn't
+fit Vercel serverless, Azure AI Speech isn't available in the user's
+country). See `context/architecture.md` and `context/progress-tracker.md`
+for the shipped contract and full pivot history; the request/response
+shapes, size/duration caps, and error handling described below are
+otherwise still accurate.
 
 ## Why this is its own step (`ai-workflow-rules.md` §3)
 

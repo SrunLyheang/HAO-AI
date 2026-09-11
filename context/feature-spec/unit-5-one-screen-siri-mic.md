@@ -8,7 +8,8 @@
 > already merged, since this unit restyles those controls rather than adding
 > them.
 >
-> **Status: DRAFT for review. Do not implement until approved.**
+> **Status: IMPLEMENTED**, pending manual browser verification and commit
+> (see "In Progress" in `context/progress-tracker.md`).
 
 ## One sentence
 
