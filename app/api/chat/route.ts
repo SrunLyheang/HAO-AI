@@ -77,6 +77,7 @@ export async function POST(req: Request) {
     pinyin: toPinyin(reply.reply_zh),
     text_en: reply.reply_en,
     correction: reply.correction,
+    correctionPinyin: reply.correction === "" ? "" : toPinyin(reply.correction),
   };
   return NextResponse.json(turn);
 }

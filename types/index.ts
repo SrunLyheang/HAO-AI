@@ -11,6 +11,12 @@ export type ChatResponse = {
 
 export type HskLevel = 1 | 2 | 3 | 4 | 5 | 6;
 
+// Applied client-side via HTMLAudioElement.playbackRate (app/page.tsx) —
+// ElevenLabs' own speed param is hard-limited to 0.7-1.2, too narrow for
+// this range (see lib/elevenlabs-tts.ts). 0.5x/2x were tried and dropped
+// for sounding too bad.
+export type SpeakingRate = 0.75 | 1 | 1.5;
+
 /** One transcript entry as rendered by the UI. */
 export type Turn =
   | { role: "user"; text_zh: string }
@@ -20,6 +26,7 @@ export type Turn =
       pinyin: string; // computed by pinyin-pro, never model-supplied
       text_en: string;
       correction: string;
+      correctionPinyin: string; // computed by pinyin-pro, "" when correction is ""
     };
 
 export type AiTurn = Extract<Turn, { role: "ai" }>;

@@ -5,17 +5,230 @@ change.
 
 ## Current Phase
 
-- Unit 3 (voice input / STT) — implemented, pending manual browser
-  verification (Chrome + Safari, desktop + iOS). Unit 2 (HSK level control)
-  still pending its own manual browser verification and commit.
+- Unit 5 (one-screen restyle + Siri mic) — implemented, pending manual
+  browser verification with a real mic/DeepSeek/ElevenLabs round trip.
+  Units 2/3/4 still pending their own manual verification and commits
+  (unchanged from before Unit 5).
 
 ## Current Goal
 
-- Unit 3: press-and-hold mic button records audio client-side, uploads to
-  `POST /api/transcribe`, Groq Whisper returns Chinese text, fed into the
-  existing `send()` pipeline exactly as typed input.
+- Unit 5: `app/page.tsx` rebuilt to `ui-context.md`'s layout (corner HSK
+  popover + disabled history icon, centered transcript, fixed blurred
+  bottom bar, type/talk toggle) using new `components/MicButton.tsx`,
+  `components/HskPicker.tsx`, `components/CorrectionDisclosure.tsx`; full
+  design-token `:root` block in `app/globals.css`; self-hosted fonts in
+  `app/layout.tsx`.
 
 ## Completed
+
+- 2026-09-11: **Unit 5 implemented** per
+  `context/feature-spec/unit-5-one-screen-siri-mic.md`, then extended with
+  several live user usability requests in the same session (see below).
+  `app/globals.css` got the exact `:root` token block from `ui-context.md`
+  plus the one `body` rule. `app/layout.tsx` loads `Newsreader`/`Geist`/
+  `Geist Mono` via `next/font/google` as `--font-serif`/`--font-sans`/
+  `--font-mono`. New `@radix-ui/react-popover` + `@radix-ui/react-collapsible`
+  deps. New `components/mic-button-helpers.ts` (`isMisTap`, `smoothLevel`,
+  extracted for testability) + `test/mic-button-helpers.test.ts` (4 cases,
+  boundary-tested). New `components/MicButton.tsx` — press/hold/release UI,
+  canvas `AnalyserNode`-driven harmonic-wobble ring (rAF loop, ripples, inner
+  echo, ~260ms release fade, ~320ms mis-tap threshold, permission-denied
+  synthetic-signal fallback, `prefers-reduced-motion` branch dropping wobble/
+  ripples but keeping the level-driven radius swell), recording lifecycle
+  (`getUserMedia`/`MediaRecorder`/blob assembly/`MAX_AUDIO_BYTES_CLIENT`
+  check) moved here from `page.tsx` per the spec. New `components/HskPicker.tsx`
+  (Radix Popover, six rows, `Check` on active level, OK confirmation).
+  New `components/CorrectionDisclosure.tsx` (Radix Collapsible, renders
+  nothing when `correction === ""`). `app/page.tsx` rewritten: dev-harness
+  `<h1>` removed, typed input promoted to a permanent type/talk toggle
+  (`inputMode` state, in-memory only, always opens in talk mode), status
+  line consolidated (error/micError/speakError each render via a shared
+  `StatusLine` component so one never silently hides another), turn
+  rendering restyled inline (AI = pinyin/hero/English + replay + correction;
+  user = a distinct card, see below), auto-scroll to the newest turn via
+  `scrollIntoView`. No change to `send()`, `handleRecordedAudio`'s network
+  calls, or `speak()`'s contract — confirmed against the live (already-
+  pivoted) `/api/speak` route, which takes `{ text }` only and applies rate
+  client-side via `audio.playbackRate` (an ElevenLabs-speed-limit workaround
+  from an earlier session), not the `{ text, rate }` shape the original
+  spec draft assumed.
+  **Documented deviation from the spec's literal rate-toggle wording:**
+  `ui-context.md` describes a two-segment slow/normal control, but the live
+  app already exposes rate options with rate applied via `playbackRate`, not
+  sent to the server. Per `ai-workflow-rules.md` §4.3 ("if an existing
+  pattern in the codebase already answers it, follow that pattern"), the
+  toggle was built as an N-segment control over the existing rate options,
+  restyled with tokens, no behavior change — not narrowed to 2 segments.
+  `npm run build`/`lint`/`test` (86 tests) all green; `grep` for raw hex
+  outside `globals.css` and for `NEXT_PUBLIC` both clean.
+  **Live usability requests handled in the same session (user-directed,
+  overriding `ai-workflow-rules.md` §2.5's default "don't touch tokens/sizes"
+  rule per its own front-matter: a direct user instruction wins):**
+  mic button enlarged 72px→96px (canvas ring 164px→220px, base radius scaled
+  proportionally), all control icons and hit-target padding enlarged, hero/
+  pinyin/English/UI type scale increased, transcript column widened
+  640px→720px; the rate toggle's active segment restyled from a subtle
+  `--surface-sunken` fill to `--border-strong` + bold text (was reported as
+  "not clear enough"); a user-adjustable text-size control (`A-`/`A+`,
+  `textScale` state, 5 steps 0.85x–1.5x, `localStorage`-persisted under
+  `text_scale`, same non-authoritative-local-cache pattern as `hsk_level`)
+  added scoped to only the transcript's Chinese/pinyin/English text — UI
+  chrome (buttons, icons, labels) deliberately excluded per the request; a
+  `hao.AI` serif wordmark added top-left (previously absent); the user's own
+  turn restyled from a plain line to a right-aligned card (`--surface-sunken`
+  fill, `--border-strong` border, bold "You" label) so it's clearly distinct
+  from the AI's unboxed hero-text turn at a glance — intentionally not using
+  any `--live-*`/`--warn-*`/etc. semantic pastel for this, since those tokens
+  are reserved for state (recording/correction/error), not permanent
+  decoration, per `ui-context.md`'s "Banned" list and `code-standards.md`'s
+  "Accent pastels are semantic only ... never decoration."
+  **Bug caught and fixed during manual browser verification:** at 400px
+  width the dev-only zh-only-mode toggle (a pre-existing control, absolutely
+  positioned independently) overlapped the transcript's pinyin line, because
+  it was a second stacked absolute row not accounted for in the transcript's
+  top padding. Fixed by merging it into the same top-left control row as the
+  wordmark/text-scale buttons instead of a second row. Confirmed via
+  screenshot at 400px that the overlap is gone and there's no horizontal
+  scroll.
+  **Flagged, not fixed (needs the user's call):** a concurrent edit to
+  `app/page.tsx` from outside this session (visible mid-session as an
+  external file-change notice) added `import { toPinyin } from
+"@/lib/pinyin"` to render pinyin under the user's own turn client-side.
+  This violates `architecture.md`'s folder-ownership rule ("`lib/` ...
+  Never imported by a client component") — it happens to work today because
+  `pinyin-pro` has no Node-only APIs, but it's a boundary violation as
+  written and wasn't part of this session's edits. Left in place per the
+  standing instruction not to silently revert another party's change; the
+  user should confirm whether this is wanted and, if so, either accept the
+  boundary exception explicitly in `architecture.md` or move the pinyin call
+  server-side (e.g. compute it in `send()`'s response shape instead).
+  **Manual browser check performed this session (via headless `browse`,
+  `npm run dev`, no real provider keys):** confirmed at 400px/1280px — warm
+  canvas, flat borders, no drop shadows outside the two named exceptions,
+  serif Chinese hero, Phosphor icons, no emoji; mic button renders at rest
+  (static hairline, canvas hidden) and the type/talk toggle swaps the bottom
+  bar's center content with no layout shift; HSK popover opens/lists all six
+  levels. **Not yet verified live** (needs real `DEEPSEEK_API_KEY`/
+  `GROQ_API_KEY`/`ELEVENLABS_API_KEY` in `.env.local` and a real microphone,
+  same gap already open for Units 2-4): actual mic hold/release ring
+  animation quality, permission-denied synthetic-signal fallback, mis-tap
+  hint, reduced-motion branch, and a full send round trip producing a real
+  AI turn. Record that check here before committing Unit 5.
+
+- 2026-09-11: **Speaking-rate control moved client-side.** The rate UI was
+  reworked per the user's ask from a slow/normal toggle into a
+  0.5x/0.75x/1x/1.5x/2x `<select>` (default 0.75x). Initially wired the same
+  way as Azure — sending `rate` to `/api/speak`, mapped straight to
+  ElevenLabs' `voice_settings.speed` — which caused **`/api/speak` to 500**
+  for 0.5/1.5/2. Diagnosed by curling ElevenLabs directly with the stored
+  key: `"Invalid setting for speed received, expected to be greater or
+equal to 0.7 and less or equal to 1.2"` — ElevenLabs hard-limits this
+  endpoint's speed to 0.7-1.2, narrower than the 0.25-4.0 previously assumed
+  from secondary docs (that number was wrong; the live API is the source of
+  truth). Fix: `lib/elevenlabs-tts.ts`'s `synthesizeSpeech` no longer takes
+  a `rate` param or sends `speed` at all — always synthesizes at natural
+  speed. `app/api/speak/validate.ts`'s `SpeakRequest` dropped `rate`
+  entirely (`{ text }` only); `app/api/speak/route.ts` updated to match.
+  `app/page.tsx`'s `speak()` now sets `audioRef.current.playbackRate =
+speakingRate` before `.play()` — the browser scales playback natively,
+  no provider limit involved, and the full 0.5x-2x range works uniformly.
+  `types/index.ts`'s `SpeakingRate` (`0.5 | 0.75 | 1 | 1.5 | 2`) is now a
+  purely client-side concept. `test/speak-validate.test.ts` rewritten
+  (`rate`-less contract; 8 cases). `npm run build`/`lint`/`test` (78 tests)
+  green; curl-verified all five rates return `200` against the live
+  `/api/speak` route with real ElevenLabs credentials.
+
+- 2026-09-11: **STT pinyin-output fix.** Mandarin mic input (e.g. "你好")
+  was sometimes transcribed as pinyin/Latin-script text instead of Hanzi —
+  a documented Whisper quirk for short/ambiguous audio, not a Groq bug.
+  Fixed in `lib/groq-stt.ts` by always sending Groq's `prompt` field seeded
+  with real Chinese-character example text (`HANZI_BIAS_PROMPT`), which
+  biases the decoder's script choice toward Hanzi without forcing
+  translation of non-Chinese audio (unlike the existing `language` param).
+  `npm run build`/`lint`/`test` green after the change.
+
+- 2026-09-11: **TTS provider pivot** — Azure AI Speech (used for Unit 4's
+  TTS) isn't available in the user's country, so it's dropped in favor of
+  **ElevenLabs**. Groq was checked first and ruled out on capability grounds,
+  not rate limits: its only TTS models (`orpheus-v1-english`,
+  `orpheus-arabic-saudi`) don't support Mandarin at all. ElevenLabs verified
+  against its own docs: `eleven_multilingual_v2` explicitly lists Chinese
+  among 29 supported languages; free tier is 10,000 credits/month
+  (1 credit = 1 character for this model, ~10 min of audio), no expiry but
+  no commercial-use rights on the free tier — fine for dev, revisit before
+  shipping to real users. `lib/azure-tts.ts` deleted; new
+  `lib/elevenlabs-tts.ts` (`synthesizeSpeech(text, rate)`, sole reader of
+  `ELEVENLABS_API_KEY`/`ELEVENLABS_VOICE_ID`, plain `fetch` POST of JSON
+  `{ text, model_id, voice_settings }` to `POST /v1/text-to-speech/{voiceId}`
+  — simpler than Azure's SSML body, no XML-escaping needed since the text is
+  a plain JSON field; `rate` maps to `voice_settings.speed`, 0.75 for slow /
+  1.0 for normal, mirroring the prosody values Azure used). No env default
+  for `ELEVENLABS_VOICE_ID` — voice availability differs per ElevenLabs
+  account/plan, so the user must set a real voice id from their own account
+  rather than trust a hardcoded one that might not exist for them.
+  `app/api/speak/route.ts` now imports from `@/lib/elevenlabs-tts` (its
+  `500` error path/message and the rest of the route were already
+  provider-agnostic — only the import and the `console.error` label
+  changed). `.env.example`'s Azure TTS lines replaced with
+  `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID` + `ELEVENLABS_MODEL_ID`
+  (default `eleven_multilingual_v2`). `architecture.md`'s TTS row,
+  `app/api/speak/`/`lib/` folder descriptions, provider-call list, and
+  invariant 6 all reworded from Azure to ElevenLabs. Azure AI Speech is now
+  out of the stack entirely (it was also rejected for STT for the same
+  country-availability reason — see the Unit 3 entry below). `npm run
+build`/`lint`/`test` still need to be re-run and a live curl/browser check
+  done with a real `ELEVENLABS_API_KEY`/`ELEVENLABS_VOICE_ID` — the user said
+  they'll paste the env values shortly.
+
+- 2026-09-11: Unit 4 implemented per
+  `context/feature-spec/unit-4-voice-output-tts.md` (both open questions
+  resolved by the user beforehand: fixed voice `zh-CN-XiaoxiaoNeural`, no
+  voice picker; overlapping playback is an ignore-and-no-op guard, not
+  interrupted). New `lib/azure-tts.ts` (`synthesizeSpeech(text, rate)` —
+  sole reader of `AZURE_SPEECH_KEY`/`AZURE_SPEECH_REGION`, plain `fetch` POST
+  of SSML to Azure's REST TTS endpoint, `escapeXml` on the model-output text
+  before it enters the SSML payload, returns raw MP3 bytes as an
+  `ArrayBuffer`, no SDK — matches Unit 1/3's `fetch`-only precedent). New
+  `app/api/speak/validate.ts` (`parseSpeakRequest`, `MAX_SPEAK_TEXT_LENGTH` =
+  500, mirrors `app/api/chat/validate.ts`/`app/api/transcribe/validate.ts`).
+  New `app/api/speak/route.ts` (POST: parse JSON → validate → synthesize →
+  `200` raw MP3 bytes with `Content-Type: audio/mpeg`, or the shared
+  `{ error }` JSON shape on `400`/`500` — the one route in the app returning
+  binary). `types/index.ts` gained `SpeakingRate`. `.env.example` gained
+  `AZURE_SPEECH_KEY`/`AZURE_SPEECH_REGION`. `app/page.tsx`: new
+  `speakingRate`/`playingIndex`/`speakError` state, one shared
+  `audioRef = useRef<HTMLAudioElement>`, `speak(text, index)` (guards on
+  `playingIndex !== null`, fetches `/api/speak`, revokes the previous object
+  URL before assigning the new one, `await audio.play()`), an `ended`
+  listener registered once in a `useEffect` that revokes the object URL and
+  clears `playingIndex` — the actual revoke-after-playback point. `send()`
+  now calls `void speak(data.reply_zh, nextHistory.length)` synchronously at
+  the end of its success path (inside the same gesture-triggered call chain,
+  so autoplay isn't script-initiated). One replay button (▶) per AI turn,
+  disabled while anything is playing; a Normal/Slow `<select>` in the header
+  next to the HSK picker, bound to `speakingRate`, affecting only the next
+  `speak()` call. `speakError` renders the same way `error`/`micError`
+  already do. New `test/speak-validate.test.ts` (11 cases: valid
+  normal/slow, missing `text`/`rate`, empty/whitespace-only `text`, both
+  `MAX_SPEAK_TEXT_LENGTH` boundary cases, invalid `rate` value/type, wrong-type
+  `text`). **Unrelated pre-existing lint fix, same commit:** the dirty,
+  not-yet-committed `zhOnlyMode` toggle (from Unit 3 work) called `setState`
+  synchronously inside a mount-only `useEffect`, which fails the
+  `react-hooks/set-state-in-effect` ESLint rule now enforced — fixed by
+  switching to a lazy `useState` initializer reading `localStorage` directly
+  (SSR-safe per its own comment: "no SSR hydration concern since the toggle
+  only affects a client-side form field, never markup"), matching the
+  no-`useEffect`-for-localStorage-reads posture Unit 2 already established
+  for `hskLevel`. `npm run build`, `npm run lint`, `npm test` (81 tests) all
+  green. `grep -R NEXT_PUBLIC` still finds nothing.
+  `architecture.md` needed no changes — confirmed `app/api/speak/`,
+  `lib/azure-tts.ts`, the object-URL cache-table row, and the "no streaming"/
+  "TTS never stored" invariants were already documented exactly as
+  implemented. Manual browser check (autoplay on send, replay button,
+  slow/normal rate audibly different, overlapping-replay no-op, no leaking
+  object URLs across many turns, in Chrome + Safari) is **not yet done** —
+  needs a real `AZURE_SPEECH_KEY`/`AZURE_SPEECH_REGION` in `.env.local` and a
+  live browser session; record the result here before committing.
 
 - 2026-09-11: Unit 3 implemented per
   `context/feature-spec/unit-3-voice-input-stt.md`. New `lib/openai.ts`
@@ -83,7 +296,7 @@ change.
   (`transcribeAudio(audio, contentType)` — plain `fetch` POST of the raw
   audio bytes, no multipart, no SDK, to Azure's short-audio REST recognition
   endpoint `https://{region}.stt.speech.microsoft.com/speech/recognition/
-  conversation/cognitiveservices/v1?language=zh-CN&format=simple`; returns
+conversation/cognitiveservices/v1?language=zh-CN&format=simple`; returns
   `""` when Azure's `RecognitionStatus` isn't `"Success"`, which the route's
   existing empty-transcript check turns into the `422` response — no new
   logic needed there). `app/api/transcribe/route.ts` now imports from
@@ -101,7 +314,7 @@ change.
   **Third pivot, same day (2026-09-11):** Azure AI Speech isn't available in
   the user's country, so it's out too. Switched to **Groq**
   (`whisper-large-v3-turbo`) — chosen because its `/openai/v1/audio/
-  transcriptions` endpoint is OpenAI-compatible (near-identical request shape
+transcriptions` endpoint is OpenAI-compatible (near-identical request shape
   to the original OpenAI design, multipart/form-data with `file`/`model`/
   `language` fields), it's a single global HTTP call (deploy-ready on Vercel,
   no local binaries), and it has a free API tier with no card required at
@@ -189,7 +402,7 @@ change.
   named ceiling), `lib/deepseek.ts` (fetch to the OpenAI-compatible endpoint,
   sole reader of `DEEPSEEK_API_KEY`), `app/api/chat/validate.ts`
   (`parseChatResponse`, fence-stripping, retry-once contract), `app/api/chat/
-  route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → pinyin
+route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → pinyin
   → `AiTurn`), `app/page.tsx` rewritten as the typed harness with a hardcoded
   greeting and a native `<details>` correction. Tests: `test/pinyin.test.ts`
   (heteronyms 还/得/长/银行 + formatting), `test/chat-validation.test.ts`
@@ -220,8 +433,13 @@ change.
   marker to verify. Commit is next after that.
 - Unit 3: automated checks (build/lint/test/curl) done. Remaining manual
   browser check (hold-to-record in Chrome + Safari, desktop + iOS, mic-deny,
-  60s cap, silence/422) needs a real `OPENAI_API_KEY` in `.env.local` and a
+  60s cap, silence/422) needs a real `GROQ_API_KEY` in `.env.local` and a
   live browser session. Commit is next after that.
+- Unit 4: automated checks (build/lint/test) done. Remaining manual browser
+  check (autoplay on send, replay button, slow/normal rate difference,
+  overlapping-replay no-op, object-URL leak check across many turns, in
+  Chrome + Safari) needs a real `AZURE_SPEECH_KEY`/`AZURE_SPEECH_REGION` in
+  `.env.local` and a live browser session. Commit is next after that.
 
 ## Verified
 
@@ -248,6 +466,15 @@ change.
   commit still pending (see "In Progress").
 - Unit 3: voice input (STT) — implemented; manual browser verification and
   commit still pending (see "In Progress").
+- Unit 4: voice output (TTS) — implemented; manual browser verification and
+  commit still pending (see "In Progress").
+- Unit 5: the one screen + Siri mic — implemented; manual browser verification
+  and commit still pending (see "In Progress").
+- Unit 6: auth (Clerk) — spec drafted at
+  `context/feature-spec/unit-6-auth-clerk.md`, not yet implemented. Sign-up
+  is open (no allowlist) per the 2026-09-11 decision below. Its one open
+  question (`<UserButton />` placement) is now resolved (see below) — the
+  spec has no remaining open questions blocking implementation.
 
 ## Open Questions
 
@@ -282,6 +509,26 @@ change.
   `tailwind.config.*` file. Design tokens land in Unit 5 in `app/globals.css`.
 - 2026-09-10: Issue tracker for the Matt Pocock skills = GitHub Issues
   (chosen by user; matches the planned GitHub repo + Vercel deploy).
+- 2026-09-11: **Unit 6 auth scope changed — sign-up left open, allowlist
+  dropped.** User: "I just want everyone to be able to sign up ... I feel
+  like no one is going to use it anyway, so it's fine to just leave it for
+  now." `ALLOWLIST`, `lib/allowlist.ts`, `isAllowed()`, and the "no access"
+  view are all removed from the design; `requireUser()` now only checks for
+  a valid Clerk session. `project-overview.md`, `architecture.md`,
+  `ui-context.md`, `build-spec.md`, and
+  `context/feature-spec/unit-6-auth-clerk.md` were all updated in this same
+  change to remove every allowlist reference. Consequence: with no gate on
+  who can sign up, Unit 9 (rate limiting + spend guard) becomes the primary
+  defense against cost abuse — don't leave a long gap between Unit 6 and
+  Unit 9 once implementation starts.
+- 2026-09-11: **Unit 6 `<UserButton />` placement resolved: Option B.**
+  Shown three mockups (top-right cluster left of history icon, top-right
+  outermost right of history icon, or in the bottom bar next to "New
+  conversation") in a published design-review artifact; user picked the
+  outermost top-right position, right of the history icon. Updated
+  `context/feature-spec/unit-6-auth-clerk.md` (item 8 + Open Questions) and
+  `ui-context.md`'s corner-controls layout diagram and description to match.
+  Unit 6's spec now has no unresolved open questions.
 
 ## Session Notes
 
