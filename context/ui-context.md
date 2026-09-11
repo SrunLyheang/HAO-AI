@@ -76,7 +76,7 @@ success, error). Phosphor icons, bold weight. No emoji anywhere.
 | State | `--*-bg` | `--*-text` | Use |
 |---|---|---|---|
 | Live (recording / AI active) | `--live-bg` `#E1F3FE` | `--live-text` `#1F6C9F` | Recording indicator, "thinking" dot, active-turn tick |
-| Warn (correction / above level) | `--warn-bg` `#FBF3DB` | `--warn-text` `#956400` | Correction inset, above-HSK word marker |
+| Warn (correction) | `--warn-bg` `#FBF3DB` | `--warn-text` `#956400` | Correction inset (the above-HSK word marker also used this token, before it was removed) |
 | OK (success) | `--ok-bg` `#EDF3EC` | `--ok-text` `#346538` | Level saved, sent confirmation |
 | Error | `--err-bg` `#FDEBEC` | `--err-text` `#9F2F2D` | Mic denied, STT/TTS/DeepSeek failure, rate-limited, clip too long |
 
@@ -131,7 +131,7 @@ Load `Newsreader` and `Geist` / `Geist Mono` via `next/font`
 | `--text-ui` | `0.9375rem` (15px) | 1.5 | Buttons, popover items, level picker |
 | `--text-label` | `0.8125rem` (13px) | 1.4 | "You" / turn labels, section headers |
 | `--text-meta` | `0.75rem` (12px) | 1.4 | Dates, turn counter — `--font-mono`, `--text-muted` |
-| `--text-tag` | `0.6875rem` (11px) | 1 | HSK tag, above-level chip — uppercase, `letter-spacing: 0.05em` |
+| `--text-tag` | `0.6875rem` (11px) | 1 | HSK tag — uppercase, `letter-spacing: 0.05em` (the above-level chip also used this size, before it was removed) |
 
 Body text is never `#000000`. The user's own transcribed turn uses
 `--font-sans` at `--text-english` size in `--text` (it is not a hero).
@@ -143,7 +143,7 @@ Body text is never `#000000`. The user's own transcribed turn uses
 | `--radius-sm` | `4px` | Buttons, `<kbd>`, input, focus outline |
 | `--radius-md` | `8px` | Turn cards, correction inset, popover |
 | `--radius-lg` | `12px` | History panel, dialog container |
-| `--radius-full` | `9999px` | Mic button, HSK tag, above-level chip — nothing else |
+| `--radius-full` | `9999px` | Mic button, HSK tag — nothing else (the above-level chip also used this, before it was removed) |
 
 ## Spacing scale
 
@@ -322,9 +322,10 @@ talk" at rest, "Listening…" while held.
 
 - HSK tag: pill, `--text-tag`, uppercase, `1px solid var(--border)`,
   `--space-1` / `--space-2` padding, `--ink` text on `--surface`.
-- Above-level word marker: inline, `--warn-bg` background,
-  `--warn-text`, `--radius-sm`, a leading Phosphor `Warning` (bold)
-  glyph at `--text-tag` size. Wraps the flagged word in the AI line.
+- Above-level word marker: **removed** — built (inline, `--warn-bg`
+  background, `--warn-text`, `--radius-sm`, leading Phosphor `Warning`
+  glyph) and then dropped by the user for inaccuracy before shipping (see
+  `progress-tracker.md`). No such marker exists in the current UI.
 
 ### `<kbd>`
 
@@ -370,7 +371,7 @@ no navbar, no footer, no other pages.
 |                        ...                    |
 |                                               |
 +-----------------------------------------------+
-| [kbd] [slow|normal]    ( o mic )      [ + ]    |  fixed bottom bar
+| [kbd] [0.75x|1x|1.5x]    ( o mic )      [ + ]    |  fixed bottom bar
 +-----------------------------------------------+
 ```
 
@@ -383,17 +384,17 @@ no navbar, no footer, no other pages.
   centered, `--space-4` side gutter, `--space-16` bottom padding so
   the last turn clears the bottom bar. Auto-scrolls to the newest
   turn on append.
-- **Turn**: AI turn = pinyin / Chinese hero / English stacked,
-  optional above-level markers, a ghost `SpeakerHigh` replay button
-  aligned to the turn's start. User turn = one `--font-sans` line in
-  `--text` labelled `You` (`--text-label`), with the Collapsible
-  correction beneath.
+- **Turn**: AI turn = pinyin / Chinese hero / English stacked, a ghost
+  `SpeakerHigh` replay button aligned to the turn's start. User turn =
+  one `--font-sans` line in `--text` labelled `You` (`--text-label`),
+  with the Collapsible correction beneath.
 - **Fixed bottom bar**: `position: fixed; inset-inline: 0; bottom: 0`,
   blurred `--surface`, `border-top: 1px solid var(--border)`,
   `--space-3` block padding, `--space-4` side gutter. Left: the
-  type/talk toggle icon, then the speaking-rate toggle (two segments,
-  `slow` / `normal`, active segment `--ink` on `--surface-sunken`).
-  Center: mic button, or the typed-input row when in typed mode (see
+  type/talk toggle icon, then the speaking-rate switcher (as shipped:
+  `0.75x` / `1x` / `1.5x`, current rate shown, tap to open the other two
+  as a small menu — not a fixed two-segment toggle). Center: mic
+  button, or the typed-input row when in typed mode (see
   "Type/talk toggle"). Right: "New conversation" — icon-only Phosphor
   `Plus` ghost button below 480px, text button above.
 - **25-turn cap**: at 25 turns the mic button is disabled and the
@@ -422,7 +423,9 @@ size `20px` for controls, `16px` inline.
 | `CaretRight` / `CaretDown` | Correction disclosure |
 | `SpeakerHigh` | Per-turn audio replay |
 | `Plus` | New conversation |
-| `Warning` | Above-level word marker |
+
+`Warning` (above-level word marker) is no longer used — that feature was
+removed before shipping.
 
 No emoji as icons, in copy, or in alt text.
 

@@ -17,7 +17,7 @@
 | Speech-to-text | Groq (`whisper-large-v3-turbo`, OpenAI-compatible endpoint) | Converts a user audio clip to Chinese text. Called only from `app/api/transcribe`. Switched from OpenAI `gpt-4o-transcribe` on 2026-09-11 — OpenAI billing didn't work, a local-Whisper detour didn't fit Vercel serverless, and Azure AI Speech isn't available in the user's country. See progress-tracker.md for the full history. |
 | Language model | DeepSeek V4 (OpenAI-compatible HTTP API) | Produces the tutor reply as structured JSON `{ reply_zh, reply_en, correction }`. Called only from `app/api/chat`. |
 | Pinyin | `pinyin-pro` | Deterministic conversion of the model's Chinese text to pinyin, server-side. |
-| Text-to-speech | ElevenLabs (`eleven_multilingual_v2`) | Converts `reply_zh` to spoken audio at the user's speaking rate. Called only from `app/api/speak`. Switched from Azure Neural TTS on 2026-09-11 — Azure AI Speech isn't available in the user's country. Groq was ruled out first: its only TTS models don't support Mandarin at all. |
+| Text-to-speech | ElevenLabs (`eleven_multilingual_v2`) | Converts `reply_zh` to spoken audio at natural speed; the client applies its own playback-rate multiplier (0.75x/1x/1.5x) afterward via `HTMLAudioElement.playbackRate` — ElevenLabs' own speed param is too narrow (hard-limited 0.7-1.2) for that range. Called only from `app/api/speak`. Switched from Azure Neural TTS on 2026-09-11 — Azure AI Speech isn't available in the user's country. Groq was ruled out first: its only TTS models don't support Mandarin at all. |
 | Audio capture | Web Audio API + `MediaRecorder` | Press-and-hold recording; `AnalyserNode` drives the mic-button ring animation. |
 | Audio playback | `HTMLAudioElement` | Plays TTS audio from a transient object URL. |
 | Rate limiting | Postgres `usage_log` table (row-count windows) | Per-user 10/minute and 100/day checks before any provider call. |
@@ -29,8 +29,8 @@
 |--------|------|------------------|
 | `app/` (pages) | Route structure, the conversation screen (`app/page.tsx`), the Clerk sign-in route (`app/sign-in/[[...sign-in]]/page.tsx`), server-side initial data loading. | Provider SDK calls, raw SQL, business rules. |
 | `app/api/transcribe/` | Receiving an audio clip, enforcing audio size/duration caps server-side, calling Groq STT, returning transcript text. | LLM calls, TTS calls, persistence. |
-| `app/api/chat/` | Building the system prompt, calling DeepSeek, parsing/validating its JSON, generating pinyin via `lib/pinyin`, flagging above-level words, persisting the turn pair, enforcing the 25-turn cap. | Audio handling, TTS calls. |
-| `app/api/speak/` | Calling ElevenLabs TTS with the given text and rate, returning audio bytes. | LLM calls, persistence, transcript logic. |
+| `app/api/chat/` | Building the system prompt, calling DeepSeek, parsing/validating its JSON, generating pinyin via `lib/pinyin`, persisting the turn pair, enforcing the 25-turn cap. (Above-level-word flagging was implemented then removed for inaccuracy — see progress-tracker.md.) | Audio handling, TTS calls. |
+| `app/api/speak/` | Calling ElevenLabs TTS with the given text, returning audio bytes. No `rate` field — speaking rate is applied client-side via `HTMLAudioElement.playbackRate`. | LLM calls, persistence, transcript logic. |
 | `app/api/conversations/` | Listing conversations, loading one transcript, creating a new conversation (with seeded opening turn), archiving the current one, pruning past 50. | Provider calls. |
 | `components/` | All React UI (transcript, turn, correction disclosure, mic button, HSK picker, history panel, rate toggle, error/loading states). Client Components only where interactivity requires it. | Any secret, any direct provider call, any DB access. |
 | `lib/` | Server-only modules: `deepseek.ts`, `groq-stt.ts`, `elevenlabs-tts.ts`, `pinyin.ts`, `hsk.ts` (loads and slices the word lists), `ratelimit.ts`, `auth.ts` (wraps Clerk's `auth()`). Each provider module is the only place its key is read. | React components, JSX, client-imported code. |
@@ -47,9 +47,9 @@
 
 | Table | Columns | Notes |
 |-------|---------|-------|
-| `settings` | `user_id` (PK, text, Clerk ID), `hsk_level` (int 1–6), `speaking_rate` (`'slow' \| 'normal'`), `updated_at` (timestamptz) | One row per user. |
+| `settings` | `user_id` (PK, text, Clerk ID), `hsk_level` (int 1–6), `speaking_rate` (`0.75 \| 1 \| 1.5`), `updated_at` (timestamptz) | One row per user. Not yet built (Unit 7); values match the live client-side rate switch (`SpeakingRate` in `types/index.ts`), not the original slow/normal design. |
 | `conversations` | `id` (PK, uuid), `user_id` (text, not null, indexed), `status` (`'active' \| 'archived'`), `created_at` (timestamptz) | At most one `active` row per user. |
-| `turns` | `id` (PK, uuid), `conversation_id` (fk, not null), `user_id` (text, not null), `role` (`'user' \| 'ai'`), `text_zh` (text), `pinyin` (text, null for user turns until transcribed), `text_en` (text, null for user turns), `correction` (text, nullable), `above_level_words` (jsonb array of strings), `created_at` (timestamptz) | Ordered by `created_at`. Max 25 per conversation. |
+| `turns` | `id` (PK, uuid), `conversation_id` (fk, not null), `user_id` (text, not null), `role` (`'user' \| 'ai'`), `text_zh` (text), `pinyin` (text, null for user turns until transcribed), `text_en` (text, null for user turns), `correction` (text, nullable), `correction_pinyin` (text, nullable), `created_at` (timestamptz) | Ordered by `created_at`. Max 25 per conversation. No `above_level_words` column — that feature was removed before shipping (see progress-tracker.md). |
 | `usage_log` | `id` (PK, uuid), `user_id` (text, not null, indexed), `route` (text), `created_at` (timestamptz, indexed) | Append-only. Rows older than 24h may be deleted by an opportunistic cleanup on write. |
 
 Dates are stored as `timestamptz` and serialized to the client as ISO 8601 UTC strings.
@@ -92,8 +92,8 @@ There is no object store. User audio recordings are never written anywhere; they
 - **No background jobs, queues, cron, or workers.** Every unit of work completes synchronously within one API request/response.
 - **Client-orchestrated pipeline.** For one conversational turn the browser makes three sequential calls, updating the UI between each:
   1. `POST /api/transcribe` — audio in, Chinese text out (Groq Whisper).
-  2. `POST /api/chat` — transcript in; DeepSeek reply parsed to `{ reply_zh, reply_en, correction }`, pinyin generated, above-level words flagged, turn pair persisted; structured turn out.
-  3. `POST /api/speak` — `reply_zh` + rate in, audio bytes out (ElevenLabs).
+  2. `POST /api/chat` — transcript in; DeepSeek reply parsed to `{ reply_zh, reply_en, correction }`, pinyin generated (including `correctionPinyin`), turn pair persisted; structured turn out.
+  3. `POST /api/speak` — `reply_zh` in, audio bytes out (ElevenLabs); rate is applied client-side, not sent to the route.
 - **Why three routes, not one.** Keeps each serverless function small and within timeout, lets the transcript update incrementally, and isolates each provider key to a single route.
 - **Structured output.** `app/api/chat` requests JSON from DeepSeek and validates the parsed object against the `ChatResponse` type. On malformed JSON it retries once; a second failure returns a `502` and no turn is persisted.
 - **No streaming.** Replies are delivered whole. TTS is a single non-streaming request.
