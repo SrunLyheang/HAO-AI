@@ -5,13 +5,14 @@ change.
 
 ## Current Phase
 
-- In progress — Unit 1 (Text conversation loop, dev harness). Backend + typed
-  harness landed; awaiting a real `DEEPSEEK_API_KEY` for the end-to-end
-  browser check.
+- Unit 1 (Text conversation loop, dev harness) — DONE. Starting Unit 2 (HSK
+  level control).
 
 ## Current Goal
 
-- Verify Unit 1 done-criteria against a live DeepSeek key, then Unit 2.
+- Unit 2: bundle HSK 1–6 word lists, inject the cumulative list per level into
+  the system prompt with prompt caching, corner level picker, "⚠ above level"
+  marker, selection persisted to `localStorage`.
 
 ## Completed
 
@@ -46,12 +47,16 @@ change.
 
 ## In Progress
 
-- Unit 1 verification: needs a live `DEEPSEEK_API_KEY` in `.env.local` to hold
-  a real typed conversation and eyeball the 还/得/长/银行 pinyin + the
-  correction toggle in the browser. All non-provider paths already checked.
+- None. Starting Unit 2.
 
 ## Verified
 
+- 2026-09-11: Unit 1 done-criteria met — user confirmed the live browser check
+  ("good pass") after setting a real `DEEPSEEK_API_KEY` in `.env.local`: typed
+  conversation holds, AI turns render Chinese + pinyin + English, correction
+  disclosure works. Combined with the 2026-09-10 automated/curl checks (build,
+  lint, 29 tests, error-branch curls, no leaked key), all Unit 1 done-criteria
+  in `build-spec.md` are satisfied. Committed at `7c7ebd9`.
 - 2026-09-10: Unit 0a done-criteria re-checked against the spec —
   `npm run build` green (0 TS errors, `strict: true` intact), `npm run lint`
   passes, `grep NEXT_PUBLIC` finds nothing, folder skeleton + `.gitkeep`/README
@@ -64,8 +69,8 @@ change.
 - Unit 0a: DONE (committed, `96fc49b`).
 - Unit 0b: DEFERRED by the user (see "Deferred" below). Building locally only —
   no deploy, no remote push — until the deploy pipeline is set up near the end.
-- Unit 1: code + tests done, committed. Blocked on a DeepSeek key for the final
-  browser check, then move to Unit 2 (HSK level control).
+- Unit 1: DONE (committed, `7c7ebd9`, verified 2026-09-11).
+- Unit 2: HSK level control — next up.
 
 ## Open Questions
 
