@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseChatResponse } from "../app/api/chat/validate";
+import { parseChatRequest, parseChatResponse } from "../app/api/chat/validate";
 
 describe("parseChatResponse", () => {
   it("accepts a valid object with empty correction", () => {
@@ -68,5 +68,54 @@ describe("parseChatResponse", () => {
 
   it("returns null for a JSON array", () => {
     expect(parseChatResponse("[1,2,3]")).toBeNull();
+  });
+});
+
+describe("parseChatRequest", () => {
+  it("accepts a valid request at hskLevel 1 (boundary)", () => {
+    expect(parseChatRequest({ history: [], message: "你好", hskLevel: 1 })).toEqual({
+      history: [],
+      message: "你好",
+      hskLevel: 1,
+    });
+  });
+
+  it("accepts a valid request at hskLevel 6 (boundary)", () => {
+    expect(parseChatRequest({ history: [], message: "你好", hskLevel: 6 })).toEqual({
+      history: [],
+      message: "你好",
+      hskLevel: 6,
+    });
+  });
+
+  it("rejects a missing hskLevel", () => {
+    expect(parseChatRequest({ history: [], message: "你好" })).toBeNull();
+  });
+
+  it.each([0, 7, 3.5, "3"])("rejects hskLevel %p", (hskLevel) => {
+    expect(parseChatRequest({ history: [], message: "你好", hskLevel })).toBeNull();
+  });
+
+  it("rejects missing message (regression)", () => {
+    expect(parseChatRequest({ history: [], hskLevel: 3 })).toBeNull();
+  });
+
+  it("rejects non-array history (regression)", () => {
+    expect(parseChatRequest({ history: "nope", message: "你好", hskLevel: 3 })).toBeNull();
+  });
+
+  it("rejects a malformed history turn (regression)", () => {
+    expect(
+      parseChatRequest({ history: [{ role: "bogus", text_zh: "x" }], message: "你好", hskLevel: 3 }),
+    ).toBeNull();
+  });
+
+  it("accepts a non-empty history (regression)", () => {
+    const history = [{ role: "user" as const, text_zh: "你好" }];
+    expect(parseChatRequest({ history, message: "再见", hskLevel: 3 })).toEqual({
+      history,
+      message: "再见",
+      hskLevel: 3,
+    });
   });
 });

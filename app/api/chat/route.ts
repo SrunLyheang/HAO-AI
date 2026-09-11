@@ -1,48 +1,16 @@
 import { NextResponse } from "next/server";
 import { callDeepSeek, type ChatMessage } from "@/lib/deepseek";
 import { toPinyin } from "@/lib/pinyin";
-import type { AiTurn, Turn } from "@/types";
-import { parseChatResponse } from "./validate";
-
-// Unit 1: HSK hardcoded to 3. Unit 2 moves prompt assembly to lib/hsk.ts and
-// injects the cumulative word list. Keep this a fixed constant — no per-turn
-// interpolation (architecture.md invariant 8).
-const SYSTEM_PROMPT = `You are a friendly Chinese conversation tutor.
-Reply in short (1-2 sentence), natural, spoken-style Mandarin.
-Restrict your vocabulary and grammar to roughly HSK level 3.
-Always reply with a single JSON object and nothing else:
-{"reply_zh": "...", "reply_en": "...", "correction": "..."}
-- reply_zh: your spoken reply in Chinese characters.
-- reply_en: a natural English translation of reply_zh.
-- correction: if the user's most recent Chinese has grammar or wording
-  mistakes, one short line with the improved sentence; otherwise "".
-Do not include pinyin.`;
+import type { AiTurn, HskLevel, Turn } from "@/types";
+import { parseChatRequest, parseChatResponse } from "./validate";
+import { buildSystemPrompt } from "./prompt";
 
 const MAX_MESSAGE_CHARS = 500;
 const MAX_HISTORY_TURNS = 50;
 
-type ChatRequest = { history: Turn[]; message: string };
-
-function parseRequest(body: unknown): ChatRequest | null {
-  if (typeof body !== "object" || body === null) return null;
-  const b = body as Record<string, unknown>;
-
-  if (typeof b.message !== "string") return null;
-  if (!Array.isArray(b.history)) return null;
-
-  for (const t of b.history) {
-    if (typeof t !== "object" || t === null) return null;
-    const turn = t as Record<string, unknown>;
-    if (turn.role !== "user" && turn.role !== "ai") return null;
-    if (typeof turn.text_zh !== "string") return null;
-  }
-
-  return { history: b.history as Turn[], message: b.message };
-}
-
-function toChatMessages(history: Turn[], message: string): ChatMessage[] {
+function toChatMessages(history: Turn[], message: string, hskLevel: HskLevel): ChatMessage[] {
   return [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: buildSystemPrompt(hskLevel) },
     ...history.map(
       (t): ChatMessage => ({
         role: t.role === "user" ? "user" : "assistant",
@@ -61,7 +29,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const parsed = parseRequest(body);
+  const parsed = parseChatRequest(body);
   if (!parsed) {
     return NextResponse.json({ error: "Malformed request" }, { status: 400 });
   }
@@ -75,7 +43,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Conversation too long" }, { status: 400 });
   }
 
-  const messages = toChatMessages(parsed.history, parsed.message);
+  const messages = toChatMessages(parsed.history, parsed.message, parsed.hskLevel);
 
   let raw: string;
   try {
