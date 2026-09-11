@@ -14,7 +14,7 @@
 | Authentication | Clerk | Identity, session cookies, sign-in UI, `<UserButton>`, middleware helpers. |
 | Database | Neon (serverless Postgres) | The single source of truth for all persistent state. |
 | ORM / migrations | Drizzle ORM + `drizzle-kit` | Schema definition, typed queries, SQL migrations under `drizzle/`. |
-| Speech-to-text | OpenAI `gpt-4o-transcribe` | Converts a user audio clip to Chinese text. Called only from `app/api/transcribe`. |
+| Speech-to-text | Groq (`whisper-large-v3-turbo`, OpenAI-compatible endpoint) | Converts a user audio clip to Chinese text. Called only from `app/api/transcribe`. Switched from OpenAI `gpt-4o-transcribe` on 2026-09-11 — OpenAI billing didn't work, a local-Whisper detour didn't fit Vercel serverless, and Azure AI Speech isn't available in the user's country. See progress-tracker.md for the full history. |
 | Language model | DeepSeek V4 (OpenAI-compatible HTTP API) | Produces the tutor reply as structured JSON `{ reply_zh, reply_en, correction }`. Called only from `app/api/chat`. |
 | Pinyin | `pinyin-pro` | Deterministic conversion of the model's Chinese text to pinyin, server-side. |
 | Text-to-speech | Azure AI Speech (Neural voices, e.g. `zh-CN-XiaoxiaoNeural`) | Converts `reply_zh` to spoken audio at the user's speaking rate. Called only from `app/api/speak`. |
@@ -28,12 +28,12 @@
 | Folder | Owns | Must not contain |
 |--------|------|------------------|
 | `app/` (pages) | Route structure, the conversation screen (`app/page.tsx`), the Clerk sign-in route (`app/sign-in/[[...sign-in]]/page.tsx`), server-side initial data loading. | Provider SDK calls, raw SQL, business rules. |
-| `app/api/transcribe/` | Receiving an audio clip, enforcing audio size/duration caps server-side, calling OpenAI STT, returning transcript text. | LLM calls, TTS calls, persistence. |
+| `app/api/transcribe/` | Receiving an audio clip, enforcing audio size/duration caps server-side, calling Groq STT, returning transcript text. | LLM calls, TTS calls, persistence. |
 | `app/api/chat/` | Building the system prompt, calling DeepSeek, parsing/validating its JSON, generating pinyin via `lib/pinyin`, flagging above-level words, persisting the turn pair, enforcing the 25-turn cap. | Audio handling, TTS calls. |
 | `app/api/speak/` | Calling Azure TTS with the given text and rate, returning audio bytes. | LLM calls, persistence, transcript logic. |
 | `app/api/conversations/` | Listing conversations, loading one transcript, creating a new conversation (with seeded opening turn), archiving the current one, pruning past 50. | Provider calls. |
 | `components/` | All React UI (transcript, turn, correction disclosure, mic button, HSK picker, history panel, rate toggle, error/loading states). Client Components only where interactivity requires it. | Any secret, any direct provider call, any DB access. |
-| `lib/` | Server-only modules: `deepseek.ts`, `openai.ts`, `azure-tts.ts`, `pinyin.ts`, `hsk.ts` (loads and slices the word lists), `ratelimit.ts`, `allowlist.ts`, `auth.ts` (wraps `auth()` + `isAllowed`). Each provider module is the only place its key is read. | React components, JSX, client-imported code. |
+| `lib/` | Server-only modules: `deepseek.ts`, `groq-stt.ts`, `azure-tts.ts`, `pinyin.ts`, `hsk.ts` (loads and slices the word lists), `ratelimit.ts`, `allowlist.ts`, `auth.ts` (wraps `auth()` + `isAllowed`). Each provider module is the only place its key is read. | React components, JSX, client-imported code. |
 | `db/` | `schema.ts` (Drizzle table definitions), `index.ts` (Neon client), `queries.ts` (every query function, each requiring `userId`). | Provider calls, request/response handling. |
 | `drizzle/` | Generated SQL migrations. | Hand-edited schema logic. |
 | `data/` | Static bundled HSK 1–6 word lists as JSON (from `drkameleon/complete-hsk-vocabulary`). Read-only at runtime. | Anything user-specific or mutable. |
@@ -56,7 +56,7 @@ Dates are stored as `timestamptz` and serialized to the client as ISO 8601 UTC s
 
 ### File / blob storage — none
 
-There is no object store. User audio recordings are never written anywhere; they exist only as an in-flight request body streamed to OpenAI. TTS audio is never stored; it is regenerated from `text_zh` via `app/api/speak` on every play and replay.
+There is no object store. User audio recordings are never written anywhere; they exist only as an in-flight request body streamed to Groq. TTS audio is never stored; it is regenerated from `text_zh` via `app/api/speak` on every play and replay.
 
 ### Cache
 
@@ -93,7 +93,7 @@ There is no object store. User audio recordings are never written anywhere; they
 
 - **No background jobs, queues, cron, or workers.** Every unit of work completes synchronously within one API request/response.
 - **Client-orchestrated pipeline.** For one conversational turn the browser makes three sequential calls, updating the UI between each:
-  1. `POST /api/transcribe` — audio in, Chinese text out (OpenAI).
+  1. `POST /api/transcribe` — audio in, Chinese text out (Groq Whisper).
   2. `POST /api/chat` — transcript in; DeepSeek reply parsed to `{ reply_zh, reply_en, correction }`, pinyin generated, above-level words flagged, turn pair persisted; structured turn out.
   3. `POST /api/speak` — `reply_zh` + rate in, audio bytes out (Azure).
 - **Why three routes, not one.** Keeps each serverless function small and within timeout, lets the transcript update incrementally, and isolates each provider key to a single route.
@@ -109,7 +109,7 @@ There is no object store. User audio recordings are never written anywhere; they
 3. **Every database access is scoped by `user_id`.** No function in `db/queries.ts` accepts a row `id` without also requiring the owning `user_id` in the same `where` clause. Cross-user reads are impossible by construction, not by convention.
 4. **User audio is never persisted.** Recorded audio is not written to the database, disk, Vercel storage, or any third-party store. It exists only as the streamed body of a single request to the transcription API and is discarded when that request completes.
 5. **Pinyin is always computed, never model-supplied.** Pinyin displayed to the user is produced by `pinyin-pro` from the model's Chinese text. The model is never asked for pinyin and any pinyin in model output is ignored.
-6. **No provider call before limits pass.** A call to OpenAI, DeepSeek, or Azure is made only after the request has cleared the per-user rate check (10/minute, 100/day) and the input-size caps (audio ≤ 60 s and ≤ 1 MB; text ≤ 500 characters).
+6. **No provider call before limits pass.** A call to DeepSeek, Groq, or Azure is made only after the request has cleared the per-user rate check (10/minute, 100/day) and the input-size caps (audio ≤ 60 s and ≤ 1 MB; text ≤ 500 characters).
 7. **Model output is inert.** Model-generated text is never passed to `dangerouslySetInnerHTML`, `eval`, a shell command, a SQL string, or a filesystem path. It is only rendered as escaped text and stored as parameterized values.
 8. **The system-prompt prefix is stable within a conversation.** The persona, rules, and HSK word list are assembled in a fixed order and are byte-identical across every turn of a conversation, so DeepSeek prompt caching is not defeated.
 9. **Conversation length is bounded.** A conversation never holds more than 25 turns; the server rejects the request that would create the 26th and instructs the client to start a new conversation.
