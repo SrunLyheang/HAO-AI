@@ -61,7 +61,7 @@ features, no providers, no auth.
 
 - Any provider SDK, API route, database, Drizzle schema, or `.env` wiring to a
   real service.
-- Clerk, `middleware.ts`, `requireUser()`, allowlist.
+- Clerk, `middleware.ts`, `requireUser()`.
 - Design tokens, fonts, Phosphor icons, minimalist-ui layout (Unit 5).
 - The typed dev harness (Unit 1).
 - Vercel, GitHub remote, deployment (Unit 0b).

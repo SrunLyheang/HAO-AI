@@ -12,7 +12,7 @@ No scenarios in the MVP. One screen. Sign in once, then you're in.
 ## MVP scope (settled)
 
 ### Experience
-- Sign in once (Clerk, allowlist — you + a friend or two, no public signup).
+- Sign in or sign up once (Clerk, open sign-up — anyone can create an account).
 - Land directly on the single conversation screen; AI greeting already present.
 - Large press-and-hold mic button, center. Charcoal at rest, still. While held,
   a soft pale-blue audio-reactive ring/waveform responds to voice volume — fluid
@@ -58,12 +58,12 @@ Azure TTS within free tier; DeepSeek negligible.
 | #  | Unit | What's in it |
 |----|------|--------------|
 | 0  | **Skeleton + deploy pipeline** | Next.js app, one page, Vercel project, env-var plumbing, `git push` → live URL. Vercel Deployment Protection on so the dev URL isn't open while auth doesn't exist yet. |
-| 1  | **Text conversation loop** (dev harness) | Typed input → `/api/chat` → DeepSeek → structured JSON `{reply_zh, reply_en, correction}` → transcript renders Chinese + pinyin (`pinyin-pro`) + English + collapsible correction. HSK hardcoded. Kept behind a dev flag afterwards. |
+| 1  | **Text conversation loop** (dev harness) | Typed input → `/api/chat` → DeepSeek → structured JSON `{reply_zh, reply_en, correction}` → transcript renders Chinese + pinyin (`pinyin-pro`) + English + collapsible correction. HSK hardcoded. Becomes a permanent user-facing type/talk toggle in Unit 5. |
 | 2  | **HSK level control** | Bundle HSK 1–6 lists, inject cumulative list per level into system prompt with prompt caching, corner picker, "⚠ above level" word marker, selection persisted (localStorage for now). |
 | 3  | **Voice input (STT)** | Press-and-hold mic → MediaRecorder → `/api/transcribe` → OpenAI `gpt-4o-transcribe` → feeds the Unit 1 loop. Size/duration caps. |
 | 4  | **Voice output (TTS)** | `reply_zh` → `/api/speak` → Azure Neural → `<audio>` autoplay on send gesture, per-turn replay button, slow/normal rate toggle. |
-| 5  | **The one screen + Siri mic** | minimalist-ui layout, document-style transcript, charcoal mic circle, pale-blue audio-reactive ring while recording (AnalyserNode → transform/opacity), still at idle, responsive to 400px. |
-| 6  | **Auth (Clerk)** | Clerk added, middleware protects all pages + API routes, public signup disabled, email allowlist, server-side `userId ∈ ALLOWLIST` check on every route. Remove Vercel Deployment Protection. |
+| 5  | **The one screen + Siri mic** | minimalist-ui layout, document-style transcript, charcoal mic circle, pale-blue audio-reactive ring while recording (AnalyserNode → transform/opacity), still at idle, responsive to 400px. Type/talk toggle exposes the Unit 1 typed input as a permanent, styled alternative to the mic. |
+| 6  | **Auth (Clerk)** | Clerk added, middleware protects all pages + API routes, public sign-up left open (anyone can create an account, no allowlist), server-side `requireUser()` session check on every route. Remove Vercel Deployment Protection. |
 | 7  | **Persistence (Neon + Drizzle)** | Schema: `settings`, `conversations`, `turns`. Save each turn, reload on open, greeting seeded server-side, HSK setting moves localStorage → DB, retention cap (~50 convos/user). |
 | 8  | **History overlay + conversation lifecycle** | History icon → panel of past sessions (date in mono) → tap to open read-only. "New conversation" button. ~25-turn cap forces a new conversation. |
 | 9  | **Rate limiting + spend guard** | `usage_log` table, per-minute (10) + per-day (100) count checks before provider calls → clean 429 state. Input caps enforced (audio ≤60s / ≤1MB, text ≤~500 chars). Provider billing caps set in OpenAI/Azure dashboards (checklist). |
@@ -127,12 +127,15 @@ errors (playback is triggered by the send gesture).
 Screen matches the minimalist-ui direction (warm canvas, flat 1px borders, no
 shadows, serif Chinese hero, Phosphor icons, no emoji). Mic ring animates
 smoothly with voice volume at 60fps and is completely still when idle. Layout
-holds from 400px to desktop with a ≥16px gutter, no horizontal scroll.
+holds from 400px to desktop with a ≥16px gutter, no horizontal scroll. A
+styled type/talk toggle lets the user send a typed message through the same
+pipeline as a voice recording.
 
 **6 — Auth (Clerk)**
-Signed-out users see only the sign-in screen. A Clerk user whose ID isn't in the
-allowlist gets rejected by every API route (verified by test). You sign in and
-use the app normally. Public sign-up is off in the Clerk dashboard.
+Signed-out users see only the sign-in/sign-up screen. An unauthenticated
+request is rejected by every API route (verified by test). You (or anyone)
+can sign up and use the app normally. Public sign-up is left on in the Clerk
+dashboard — no allowlist gate.
 
 **7 — Persistence (Neon + Drizzle)**
 Refresh mid-conversation → transcript is still there. HSK setting set on one
@@ -162,16 +165,19 @@ change.
 
 ## Security & rate-limiting notes (feeds Units 6 & 9)
 
-**Threat model:** app is behind Clerk auth with a 2–3 person allowlist. Not
-public. Real risks: (1) cost/billing abuse, (2) leaked API keys, (3) unbounded
-inputs, (4) one authed user reading another's data. Everything else is hygiene.
+**Threat model:** app is behind Clerk auth with open sign-up — anyone can
+create an account, so it's not limited to a known small group. Real risks:
+(1) cost/billing abuse, (2) leaked API keys, (3) unbounded inputs, (4) one
+authed user reading another's data. Per-user rate limiting (Unit 9) is the
+main defense against an open sign-up being cost-abused; provider billing
+caps are the backstop. Everything else is hygiene.
 
 **Cost abuse — defense in depth, outermost first**
 - Provider billing caps (work even if code is broken): OpenAI hard usage limit,
   Azure budget + spending cap, DeepSeek prepaid balance is the ceiling. ~$10/mo
   each. Set day one.
-- Clerk: disable public sign-up, use the built-in email allowlist, then re-check
-  server-side (`userId ∈ ALLOWLIST` env var) on every API route.
+- Clerk: `requireUser()` re-checks a valid session server-side on every API
+  route (no allowlist — sign-up is open).
 - Per-user rate limit on the conversation route.
 - Input caps: audio ≤ 60s and ≤ 1 MB (reject before it hits OpenAI); transcribed
   text ≤ ~500 chars; cap turns per conversation at ~25 (the "resend full
@@ -232,4 +238,8 @@ encryption beyond Neon's default.
 Ordered scenarios + target phrases + completion tracking → pronunciation / tone
 scoring → cross-session memory → SRS / flashcards → streaks / stats / dashboards →
 public multi-user signup → audio storage → native app → offline → handwriting
-practice → typed-input mode as a first-class feature.
+practice → typed-input mode as a first-class feature → **voice picker** (let the
+user choose the TTS voice/"voice actor" instead of the single hardcoded
+`ELEVENLABS_VOICE_ID`; needs a voice list endpoint or a small bundled list, a
+picker UI, and per-user persistence — settings table already exists by Unit 7,
+so this slots in there once the app's core loop is working end-to-end).

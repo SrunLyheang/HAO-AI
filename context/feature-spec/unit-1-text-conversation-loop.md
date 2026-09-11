@@ -179,7 +179,7 @@ minimalist-ui screen (that's Unit 5).
 
 ## Out of scope (explicitly — do not build now)
 
-- `requireUser()`, Clerk, allowlist, `middleware.ts` (Unit 6).
+- `requireUser()`, Clerk, `middleware.ts` (Unit 6).
 - Any database, Drizzle schema, migration, persistence, turn IDs,
   `conversations` / `turns` tables (Unit 7).
 - HSK word-list bundling, cumulative-list injection, prompt caching, the
@@ -394,7 +394,7 @@ git status && git log --oneline -1
   the real minimalist-ui screen; swap the native `<details>` correction for
   Radix `Collapsible`.
 - Unit 6: add `requireUser()` as the first line of `/api/chat` + an
-  auth / allowlist rejection test for the route.
+  auth rejection test for the route.
 - Unit 7: persist the turn pair, add turn ids / `created_at`, widen `Turn`,
   server-seed the greeting.
 - Unit 9: `usage_log` insert + per-minute / per-day rate check before the

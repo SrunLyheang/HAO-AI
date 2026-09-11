@@ -59,7 +59,7 @@ The agent stops and gives exact steps; the user performs them:
 
 - Any real provider key (OpenAI, DeepSeek, Azure, Clerk, Neon) — those arrive
   with their units.
-- Clerk / `middleware.ts` / allowlist — Unit 6 removes Deployment Protection and
+- Clerk / `middleware.ts` — Unit 6 removes Deployment Protection and
   replaces it with real auth.
 - CI beyond Vercel's built-in build (no GitHub Actions).
 - Preview-vs-production *value* differences beyond the single probe var

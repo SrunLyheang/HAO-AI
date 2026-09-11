@@ -25,9 +25,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
+  const forceZh = form.get("mode") === "zh";
+
   let text: string;
   try {
-    text = await transcribeAudio(parsed.file, parsed.contentType);
+    text = await transcribeAudio(parsed.file, parsed.contentType, forceZh);
   } catch (err) {
     console.error("transcribe: Groq call failed", err);
     return NextResponse.json({ error: "Upstream unavailable" }, { status: 500 });

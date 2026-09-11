@@ -216,7 +216,7 @@ AZURE_SPEECH_REGION=
 
 ## Out of scope (explicitly — do not build now)
 
-- `requireUser()`, Clerk, allowlist on `/api/speak` (Unit 6 — same deferral
+- `requireUser()`, Clerk on `/api/speak` (Unit 6 — same deferral
   Units 1–3 already carry for their routes).
 - Rate limiting / `usage_log` on this route (Unit 9) — note `build-spec.md`'s
   rate-limiting table only names `transcribe` and `chat` explicitly
@@ -384,7 +384,7 @@ Still open — **deliberately skipped for now, revisit before/at Unit 9**:
   minimalist-ui-styled controls (Phosphor icons, design tokens); the
   autoplay-reactive visual ring stays a Unit 5 item regardless (it reacts to
   the *recording* `AnalyserNode`, not playback, per `architecture.md`).
-- Unit 6: `requireUser()` on `/api/speak` + an auth/allowlist rejection test
+- Unit 6: `requireUser()` on `/api/speak` + an auth rejection test
   for the route (same pattern as the other two AI routes).
 - Unit 7: persist `speaking_rate` to the `settings` table; the in-memory-only
   `speakingRate` state added here is replaced, not extended, by that column

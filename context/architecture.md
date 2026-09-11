@@ -17,11 +17,11 @@
 | Speech-to-text | Groq (`whisper-large-v3-turbo`, OpenAI-compatible endpoint) | Converts a user audio clip to Chinese text. Called only from `app/api/transcribe`. Switched from OpenAI `gpt-4o-transcribe` on 2026-09-11 — OpenAI billing didn't work, a local-Whisper detour didn't fit Vercel serverless, and Azure AI Speech isn't available in the user's country. See progress-tracker.md for the full history. |
 | Language model | DeepSeek V4 (OpenAI-compatible HTTP API) | Produces the tutor reply as structured JSON `{ reply_zh, reply_en, correction }`. Called only from `app/api/chat`. |
 | Pinyin | `pinyin-pro` | Deterministic conversion of the model's Chinese text to pinyin, server-side. |
-| Text-to-speech | Azure AI Speech (Neural voices, e.g. `zh-CN-XiaoxiaoNeural`) | Converts `reply_zh` to spoken audio at the user's speaking rate. Called only from `app/api/speak`. |
+| Text-to-speech | ElevenLabs (`eleven_multilingual_v2`) | Converts `reply_zh` to spoken audio at the user's speaking rate. Called only from `app/api/speak`. Switched from Azure Neural TTS on 2026-09-11 — Azure AI Speech isn't available in the user's country. Groq was ruled out first: its only TTS models don't support Mandarin at all. |
 | Audio capture | Web Audio API + `MediaRecorder` | Press-and-hold recording; `AnalyserNode` drives the mic-button ring animation. |
 | Audio playback | `HTMLAudioElement` | Plays TTS audio from a transient object URL. |
 | Rate limiting | Postgres `usage_log` table (row-count windows) | Per-user 10/minute and 100/day checks before any provider call. |
-| Secrets | Vercel environment variables | All provider keys and the allowlist; server-only, never `NEXT_PUBLIC_*`. |
+| Secrets | Vercel environment variables | All provider keys; server-only, never `NEXT_PUBLIC_*`. |
 
 ## System boundaries
 
@@ -30,16 +30,16 @@
 | `app/` (pages) | Route structure, the conversation screen (`app/page.tsx`), the Clerk sign-in route (`app/sign-in/[[...sign-in]]/page.tsx`), server-side initial data loading. | Provider SDK calls, raw SQL, business rules. |
 | `app/api/transcribe/` | Receiving an audio clip, enforcing audio size/duration caps server-side, calling Groq STT, returning transcript text. | LLM calls, TTS calls, persistence. |
 | `app/api/chat/` | Building the system prompt, calling DeepSeek, parsing/validating its JSON, generating pinyin via `lib/pinyin`, flagging above-level words, persisting the turn pair, enforcing the 25-turn cap. | Audio handling, TTS calls. |
-| `app/api/speak/` | Calling Azure TTS with the given text and rate, returning audio bytes. | LLM calls, persistence, transcript logic. |
+| `app/api/speak/` | Calling ElevenLabs TTS with the given text and rate, returning audio bytes. | LLM calls, persistence, transcript logic. |
 | `app/api/conversations/` | Listing conversations, loading one transcript, creating a new conversation (with seeded opening turn), archiving the current one, pruning past 50. | Provider calls. |
 | `components/` | All React UI (transcript, turn, correction disclosure, mic button, HSK picker, history panel, rate toggle, error/loading states). Client Components only where interactivity requires it. | Any secret, any direct provider call, any DB access. |
-| `lib/` | Server-only modules: `deepseek.ts`, `groq-stt.ts`, `azure-tts.ts`, `pinyin.ts`, `hsk.ts` (loads and slices the word lists), `ratelimit.ts`, `allowlist.ts`, `auth.ts` (wraps `auth()` + `isAllowed`). Each provider module is the only place its key is read. | React components, JSX, client-imported code. |
+| `lib/` | Server-only modules: `deepseek.ts`, `groq-stt.ts`, `elevenlabs-tts.ts`, `pinyin.ts`, `hsk.ts` (loads and slices the word lists), `ratelimit.ts`, `auth.ts` (wraps Clerk's `auth()`). Each provider module is the only place its key is read. | React components, JSX, client-imported code. |
 | `db/` | `schema.ts` (Drizzle table definitions), `index.ts` (Neon client), `queries.ts` (every query function, each requiring `userId`). | Provider calls, request/response handling. |
 | `drizzle/` | Generated SQL migrations. | Hand-edited schema logic. |
 | `data/` | Static bundled HSK 1–6 word lists as JSON (from `drkameleon/complete-hsk-vocabulary`). Read-only at runtime. | Anything user-specific or mutable. |
 | `types/` | Shared TypeScript types (`Turn`, `Conversation`, `ChatResponse`, `Settings`). | Runtime logic. |
-| `middleware.ts` | Clerk route protection: everything requires a session except static assets and `/sign-in`. | Business logic, allowlist checks (those live per-route in `lib/auth`). |
-| `test/` | Automated tests, including one per API route asserting rejection of unauthenticated and non-allowlisted requests. | — |
+| `middleware.ts` | Clerk route protection: everything requires a session except static assets and `/sign-in`. | Business logic. |
+| `test/` | Automated tests, including one per API route asserting rejection of unauthenticated requests. | — |
 
 ## Storage model
 
@@ -71,17 +71,15 @@ There is no object store. User audio recordings are never written anywhere; they
 
 ### Authentication
 
-- Clerk owns identity. Sign-in is Clerk's hosted component at `/sign-in` (email or Google). Public sign-up is disabled in the Clerk dashboard.
+- Clerk owns identity. Sign-in/sign-up is Clerk's hosted component at `/sign-in` (email or Google). Public sign-up is left **open** in the Clerk dashboard — anyone can create an account; there is no allowlist.
 - `middleware.ts` runs Clerk middleware and requires a valid session for every path except static assets and `/sign-in`. Unauthenticated requests to pages are redirected to sign-in; to API routes, they receive `401`.
 - Session state is Clerk's `HttpOnly` / `Secure` / `SameSite` cookies. The app stores no session data itself.
 
-### Authorization (allowlist)
+### Authorization
 
-- `ALLOWLIST` is a Vercel environment variable: a comma-separated list of Clerk user IDs.
-- `lib/allowlist.ts` exports `isAllowed(userId: string): boolean`.
-- `lib/auth.ts` exports `requireUser()` which calls Clerk's `auth()`, then `isAllowed`, and throws a `403` response if either fails.
+- `lib/auth.ts` exports `requireUser()` which calls Clerk's `auth()` and throws a `401` response if there is no session. It returns the Clerk `userId` for callers that need to scope data by it.
 - Every API route handler calls `requireUser()` as its first statement, before reading the body, touching the database, or calling a provider.
-- The page (`app/page.tsx`) also checks `isAllowed` server-side and renders a "no access" view for signed-in users who are not on the list.
+- No allowlist check exists anywhere — any authenticated user may use the app. Cost exposure from open sign-up is bounded by the per-user rate limits (Unit 9) and provider billing caps, not by gating who can sign up.
 
 ### Ownership
 
@@ -95,7 +93,7 @@ There is no object store. User audio recordings are never written anywhere; they
 - **Client-orchestrated pipeline.** For one conversational turn the browser makes three sequential calls, updating the UI between each:
   1. `POST /api/transcribe` — audio in, Chinese text out (Groq Whisper).
   2. `POST /api/chat` — transcript in; DeepSeek reply parsed to `{ reply_zh, reply_en, correction }`, pinyin generated, above-level words flagged, turn pair persisted; structured turn out.
-  3. `POST /api/speak` — `reply_zh` + rate in, audio bytes out (Azure).
+  3. `POST /api/speak` — `reply_zh` + rate in, audio bytes out (ElevenLabs).
 - **Why three routes, not one.** Keeps each serverless function small and within timeout, lets the transcript update incrementally, and isolates each provider key to a single route.
 - **Structured output.** `app/api/chat` requests JSON from DeepSeek and validates the parsed object against the `ChatResponse` type. On malformed JSON it retries once; a second failure returns a `502` and no turn is persisted.
 - **No streaming.** Replies are delivered whole. TTS is a single non-streaming request.
@@ -104,12 +102,12 @@ There is no object store. User audio recordings are never written anywhere; they
 
 ## Invariants
 
-1. **No secret leaves the server.** Provider API keys and `ALLOWLIST` are read only inside `lib/` server modules and `app/api/*` handlers. No secret is prefixed `NEXT_PUBLIC_`, imported into a Client Component, or included in any response body or client-visible log.
-2. **Every API route authorizes first.** Each handler under `app/api/*` calls `requireUser()` (Clerk `auth()` + `isAllowed`) as its first statement, before reading the request body, querying the database, or calling any provider. A route without this check must not merge.
+1. **No secret leaves the server.** Provider API keys are read only inside `lib/` server modules and `app/api/*` handlers. No secret is prefixed `NEXT_PUBLIC_`, imported into a Client Component, or included in any response body or client-visible log.
+2. **Every API route authenticates first.** Each handler under `app/api/*` calls `requireUser()` (Clerk `auth()`) as its first statement, before reading the request body, querying the database, or calling any provider. A route without this check must not merge.
 3. **Every database access is scoped by `user_id`.** No function in `db/queries.ts` accepts a row `id` without also requiring the owning `user_id` in the same `where` clause. Cross-user reads are impossible by construction, not by convention.
 4. **User audio is never persisted.** Recorded audio is not written to the database, disk, Vercel storage, or any third-party store. It exists only as the streamed body of a single request to the transcription API and is discarded when that request completes.
 5. **Pinyin is always computed, never model-supplied.** Pinyin displayed to the user is produced by `pinyin-pro` from the model's Chinese text. The model is never asked for pinyin and any pinyin in model output is ignored.
-6. **No provider call before limits pass.** A call to DeepSeek, Groq, or Azure is made only after the request has cleared the per-user rate check (10/minute, 100/day) and the input-size caps (audio ≤ 60 s and ≤ 1 MB; text ≤ 500 characters).
+6. **No provider call before limits pass.** A call to DeepSeek, Groq, or ElevenLabs is made only after the request has cleared the per-user rate check (10/minute, 100/day) and the input-size caps (audio ≤ 60 s and ≤ 1 MB; text ≤ 500 characters).
 7. **Model output is inert.** Model-generated text is never passed to `dangerouslySetInnerHTML`, `eval`, a shell command, a SQL string, or a filesystem path. It is only rendered as escaped text and stored as parameterized values.
 8. **The system-prompt prefix is stable within a conversation.** The persona, rules, and HSK word list are assembled in a fixed order and are byte-identical across every turn of a conversation, so DeepSeek prompt caching is not defeated.
 9. **Conversation length is bounded.** A conversation never holds more than 25 turns; the server rejects the request that would create the 26th and instructs the client to start a new conversation.
