@@ -5,7 +5,8 @@
 > is verifiable in a browser. HSK is hardcoded. No auth, no DB, no rate
 > limiting, no voice — those are later units.
 >
-> **Status: DRAFT for review. Do not implement until approved.**
+> **Status: DONE.** Implemented, verified via live browser check, and
+> committed at `7c7ebd9` (see `context/progress-tracker.md`).
 
 ## One sentence
 

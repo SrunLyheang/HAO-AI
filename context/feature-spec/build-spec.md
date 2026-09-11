@@ -1,5 +1,14 @@
 # Build Spec — Pingo (Chinese) Clone, MVP
 
+> **Provider note (2026-09-11):** this doc's STT/TTS provider names are the
+> original plan and are now stale — STT pivoted OpenAI `gpt-4o-transcribe` →
+> Groq `whisper-large-v3-turbo`, TTS pivoted Azure Neural → ElevenLabs (rate
+> applied client-side, 0.75x/1x/1.5x, not a server-side slow/normal toggle).
+> See `context/architecture.md` for the shipped stack and
+> `context/progress-tracker.md` for why. Left uncorrected below to preserve
+> the original plan as a record; treat every "OpenAI"/"Azure" mention past
+> this point as superseded.
+
 ## What it is
 
 A single-purpose web app: open it, the AI has already greeted you in Chinese,
