@@ -93,7 +93,7 @@ change.
   **Flagged, not fixed (needs the user's call):** a concurrent edit to
   `app/page.tsx` from outside this session (visible mid-session as an
   external file-change notice) added `import { toPinyin } from
-  "@/lib/pinyin"` to render pinyin under the user's own turn client-side.
+"@/lib/pinyin"` to render pinyin under the user's own turn client-side.
   This violates `architecture.md`'s folder-ownership rule ("`lib/` ...
   Never imported by a client component") — it happens to work today because
   `pinyin-pro` has no Node-only APIs, but it's a boundary violation as
@@ -122,7 +122,7 @@ change.
   ElevenLabs' `voice_settings.speed` — which caused **`/api/speak` to 500**
   for 0.5/1.5/2. Diagnosed by curling ElevenLabs directly with the stored
   key: `"Invalid setting for speed received, expected to be greater or
-  equal to 0.7 and less or equal to 1.2"` — ElevenLabs hard-limits this
+equal to 0.7 and less or equal to 1.2"` — ElevenLabs hard-limits this
   endpoint's speed to 0.7-1.2, narrower than the 0.25-4.0 previously assumed
   from secondary docs (that number was wrong; the live API is the source of
   truth). Fix: `lib/elevenlabs-tts.ts`'s `synthesizeSpeech` no longer takes
@@ -130,7 +130,7 @@ change.
   speed. `app/api/speak/validate.ts`'s `SpeakRequest` dropped `rate`
   entirely (`{ text }` only); `app/api/speak/route.ts` updated to match.
   `app/page.tsx`'s `speak()` now sets `audioRef.current.playbackRate =
-  speakingRate` before `.play()` — the browser scales playback natively,
+speakingRate` before `.play()` — the browser scales playback natively,
   no provider limit involved, and the full 0.5x-2x range works uniformly.
   `types/index.ts`'s `SpeakingRate` (`0.5 | 0.75 | 1 | 1.5 | 2`) is now a
   purely client-side concept. `test/speak-validate.test.ts` rewritten
@@ -176,7 +176,7 @@ change.
   invariant 6 all reworded from Azure to ElevenLabs. Azure AI Speech is now
   out of the stack entirely (it was also rejected for STT for the same
   country-availability reason — see the Unit 3 entry below). `npm run
-  build`/`lint`/`test` still need to be re-run and a live curl/browser check
+build`/`lint`/`test` still need to be re-run and a live curl/browser check
   done with a real `ELEVENLABS_API_KEY`/`ELEVENLABS_VOICE_ID` — the user said
   they'll paste the env values shortly.
 
@@ -296,7 +296,7 @@ change.
   (`transcribeAudio(audio, contentType)` — plain `fetch` POST of the raw
   audio bytes, no multipart, no SDK, to Azure's short-audio REST recognition
   endpoint `https://{region}.stt.speech.microsoft.com/speech/recognition/
-  conversation/cognitiveservices/v1?language=zh-CN&format=simple`; returns
+conversation/cognitiveservices/v1?language=zh-CN&format=simple`; returns
   `""` when Azure's `RecognitionStatus` isn't `"Success"`, which the route's
   existing empty-transcript check turns into the `422` response — no new
   logic needed there). `app/api/transcribe/route.ts` now imports from
@@ -314,7 +314,7 @@ change.
   **Third pivot, same day (2026-09-11):** Azure AI Speech isn't available in
   the user's country, so it's out too. Switched to **Groq**
   (`whisper-large-v3-turbo`) — chosen because its `/openai/v1/audio/
-  transcriptions` endpoint is OpenAI-compatible (near-identical request shape
+transcriptions` endpoint is OpenAI-compatible (near-identical request shape
   to the original OpenAI design, multipart/form-data with `file`/`model`/
   `language` fields), it's a single global HTTP call (deploy-ready on Vercel,
   no local binaries), and it has a free API tier with no card required at
@@ -402,7 +402,7 @@ change.
   named ceiling), `lib/deepseek.ts` (fetch to the OpenAI-compatible endpoint,
   sole reader of `DEEPSEEK_API_KEY`), `app/api/chat/validate.ts`
   (`parseChatResponse`, fence-stripping, retry-once contract), `app/api/chat/
-  route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → pinyin
+route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → pinyin
   → `AiTurn`), `app/page.tsx` rewritten as the typed harness with a hardcoded
   greeting and a native `<details>` correction. Tests: `test/pinyin.test.ts`
   (heteronyms 还/得/长/银行 + formatting), `test/chat-validation.test.ts`
@@ -468,8 +468,8 @@ change.
   commit still pending (see "In Progress").
 - Unit 4: voice output (TTS) — implemented; manual browser verification and
   commit still pending (see "In Progress").
-- Unit 5: the one screen + Siri mic — spec drafted at
-  `context/feature-spec/unit-5-one-screen-siri-mic.md`, not yet implemented.
+- Unit 5: the one screen + Siri mic — implemented; manual browser verification
+  and commit still pending (see "In Progress").
 - Unit 6: auth (Clerk) — spec drafted at
   `context/feature-spec/unit-6-auth-clerk.md`, not yet implemented. Sign-up
   is open (no allowlist) per the 2026-09-11 decision below. Its one open
