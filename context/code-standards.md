@@ -30,9 +30,9 @@ Implementation rules for hao.AI. These bind all code in the repo. They sit under
 - Route handlers (`app/api/*/route.ts`) do one thing each. The three AI routes stay separate — `transcribe`, `chat`, `speak` — never merged into one handler. `conversations` handles history reads/writes only.
 - Every API route handler calls `requireUser()` as its first statement, before reading the body, before any provider or DB call. No exceptions.
 - Route order inside a handler: `requireUser()` → parse and validate input → check size caps → check rate limit → provider/DB work → shape and return response.
-- Return predictable shapes. Success returns the documented object; failure returns `{ error: string }` with a correct status (400 bad input, 401 unauthenticated, 403 not allowlisted, 429 rate-limited, 502 upstream failure). Same shape for the same condition across all routes.
+- Return predictable shapes. Success returns the documented object; failure returns `{ error: string }` with a correct status (400 bad input, 401 unauthenticated, 429 rate-limited, 502 upstream failure). Same shape for the same condition across all routes.
 - No streaming responses. Every route is request/response. No background work kicked off after the response is sent.
-- `middleware.ts` is the only place route-level auth gating lives. Do not re-implement session gating per route; do re-check the allowlist per route via `requireUser()`.
+- `middleware.ts` is the only place route-level auth gating lives. Do not re-implement session gating per route; do re-check the session per route via `requireUser()`.
 
 ## Styling
 
@@ -50,7 +50,7 @@ Implementation rules for hao.AI. These bind all code in the repo. They sit under
 ## API Routes
 
 - Parse and validate the request body before any logic runs. Reject unknown or malformed input with 400 and `{ error }`.
-- Enforce auth and allowlist before any mutation or provider call: `requireUser()` first, always.
+- Enforce auth before any mutation or provider call: `requireUser()` first, always.
 - Enforce input caps server-side even when the client also checks: transcribed/user text ≤ 500 characters; reject longer with 400. Audio size and duration (≤ 1 MB, ≤ 60s) are checked client-side and re-checked server-side by content length.
 - Check rate limits before calls to `transcribe` and `chat`: per-user 10 turns/minute and 100 turns/day via row counts in `usage_log`. On limit, return 429 and make no provider call. On pass, insert one `usage_log` row.
 - Scope every DB read and write by `user_id`. Load a conversation by `conversation_id` AND `user_id`. Never fetch by `id` alone. This is enforced by `db/queries.ts` requiring `userId` on every function — do not add a query that skips it.
@@ -79,10 +79,10 @@ Implementation rules for hao.AI. These bind all code in the repo. They sit under
 - `app/api/speak/` — the only caller of the Azure TTS client.
 - `app/api/conversations/` — history list, single-conversation load, new-conversation creation, archive. No provider calls.
 - `components/` — presentational and interactive UI. No secrets, no provider SDKs, no direct DB access. Server data arrives as props.
-- `lib/` — server-only modules, one concern each: `deepseek.ts`, `openai.ts`, `azure-tts.ts`, `pinyin.ts`, `hsk.ts`, `ratelimit.ts`, `allowlist.ts`, `auth.ts`. Never imported by a client component.
+- `lib/` — server-only modules, one concern each: `deepseek.ts`, `openai.ts`, `azure-tts.ts`, `pinyin.ts`, `hsk.ts`, `ratelimit.ts`, `auth.ts`. Never imported by a client component.
 - `db/` — `schema.ts` (Drizzle tables), `index.ts` (client), `queries.ts` (every function takes `userId` and scopes by it).
 - `drizzle/` — generated migration files. Append only.
 - `data/` — static bundled HSK 1–6 word list JSON, read-only at runtime. Source: `drkameleon/complete-hsk-vocabulary`.
 - `types/` — shared TypeScript types: `Turn`, `Conversation`, `ChatResponse`, `Settings`.
 - `middleware.ts` — Clerk session gating for all routes except static assets and `/sign-in`.
-- `test/` — per-route tests, including the auth/allowlist rejection test each API route must have.
+- `test/` — per-route tests, including the auth rejection test each API route must have.

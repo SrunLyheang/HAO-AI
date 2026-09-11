@@ -300,6 +300,24 @@ frame.
 **Hint.** Below the button: `--text-meta`, `--text-muted`. "Hold to
 talk" at rest, "Listening…" while held.
 
+### Type/talk toggle
+
+- A ghost icon button, Phosphor `Keyboard` (bold), sits at the left end of
+  the fixed bottom bar, before the speaking-rate toggle. Same ghost-button
+  treatment as the replay/history/close icons.
+- Default state is talk (mic). Tapping the toggle swaps the bottom bar's
+  center content: the mic circle is replaced by a single-line text input
+  (`--surface`, `1px solid var(--border)`, `--radius-sm`, `--text-ui`,
+  placeholder "用中文写一句话…") plus a ghost `PaperPlaneTilt` send button,
+  sized to match the mic button's footprint in the bar. Tapping the icon
+  again (now a Phosphor `Microphone`) swaps back to the mic.
+- The typed message goes through the exact same `send()` pipeline as a
+  transcribed voice message — same turn shape, same HSK level, same 500-char
+  cap, same disabled state at the 25-turn cap.
+- No mode persists across reloads; the screen always opens in talk mode.
+- Motion: the swap crossfades (`opacity`, `160ms`) — no layout-shifting
+  slide, since both modes occupy the same bar position.
+
 ### Tags and badges
 
 - HSK tag: pill, `--text-tag`, uppercase, `1px solid var(--border)`,
@@ -341,7 +359,7 @@ no navbar, no footer, no other pages.
 
 ```
 +-----------------------------------------------+
-|  ·                        [HSK 3] [History]   |  corner controls
+|  ·                [HSK 3] [History] [Account] |  corner controls
 |                                               |
 |              +---------------------+          |
 |              |  ni hao             |          |  transcript column
@@ -352,14 +370,15 @@ no navbar, no footer, no other pages.
 |                        ...                    |
 |                                               |
 +-----------------------------------------------+
-|   [slow|normal]        ( o mic )      [ + ]    |  fixed bottom bar
+| [kbd] [slow|normal]    ( o mic )      [ + ]    |  fixed bottom bar
 +-----------------------------------------------+
 ```
 
 - **Corner controls** (top): absolutely positioned, `--space-4` from
   the top and sides. Left: nothing (or a small static `hao.AI`
   wordmark in `--text-muted`, `--text-meta`). Right: HSK tag, then the
-  history icon button, `--space-2` apart.
+  history icon button, then Clerk's `<UserButton />` (sign-out) as the
+  outermost control, `--space-2` apart (Unit 6 decision, 2026-09-11).
 - **Transcript column**: vertically scrolling, `max-width: 640px`,
   centered, `--space-4` side gutter, `--space-16` bottom padding so
   the last turn clears the bottom bar. Auto-scrolls to the newest
@@ -371,20 +390,20 @@ no navbar, no footer, no other pages.
   correction beneath.
 - **Fixed bottom bar**: `position: fixed; inset-inline: 0; bottom: 0`,
   blurred `--surface`, `border-top: 1px solid var(--border)`,
-  `--space-3` block padding, `--space-4` side gutter. Left: speaking-
-  rate toggle (two segments, `slow` / `normal`, active segment
-  `--ink` on `--surface-sunken`). Center: mic button. Right: "New
-  conversation" — icon-only Phosphor `Plus` ghost button below 480px,
-  text button above.
+  `--space-3` block padding, `--space-4` side gutter. Left: the
+  type/talk toggle icon, then the speaking-rate toggle (two segments,
+  `slow` / `normal`, active segment `--ink` on `--surface-sunken`).
+  Center: mic button, or the typed-input row when in typed mode (see
+  "Type/talk toggle"). Right: "New conversation" — icon-only Phosphor
+  `Plus` ghost button below 480px, text button above.
 - **25-turn cap**: at 25 turns the mic button is disabled and the
   status line reads "This conversation is full — start a new one."
 
 ### Sign-in
 
 Clerk's `<SignIn>` centered on `--canvas`, `max-width: 400px`, no
-custom chrome. After sign-in, an allowlist check: users not on the
-list see a centered `--text` message, "This is a private app.", and
-nothing else.
+custom chrome. Sign-up is open — anyone can create an account; there
+is no allowlist or "no access" state after signing in.
 
 ## Iconography
 
@@ -395,6 +414,8 @@ size `20px` for controls, `16px` inline.
 | Icon | Where |
 |---|---|
 | `Microphone` (fill) | Mic button |
+| `Keyboard` | Type/talk toggle (talk mode) |
+| `PaperPlaneTilt` | Send button (typed mode) |
 | `ClockCounterClockwise` | History trigger |
 | `X` | Dialog close |
 | `Check` | Active HSK level row |

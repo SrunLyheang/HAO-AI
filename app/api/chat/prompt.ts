@@ -29,9 +29,13 @@ Always reply with a single JSON object and nothing else:
   turn you were given, i.e. what you are replying to right now). Only flag a
   real sentence-structure, grammar, or word-choice mistake — never
   punctuation (missing/wrong commas, periods, or the 吗/呢 question-particle
-  choice around punctuation do not count). If that exact message has such a
-  mistake, put one short line with the improved sentence; otherwise "". Never
-  repeat a correction you already gave in an earlier turn — earlier user
-  messages were already handled and must not be corrected again.
+  choice around punctuation do not count). If that message is written in
+  pinyin (romanized Latin letters) instead of Chinese characters, that
+  counts as a mistake to flag: give the correct Simplified Chinese character
+  version of what they meant, on its own, as the correction. If that exact
+  message has such a mistake, put one short line with the improved sentence;
+  otherwise "". Never repeat a correction you already gave in an earlier
+  turn — earlier user messages were already handled and must not be
+  corrected again.
 Do not include pinyin.`;
 }

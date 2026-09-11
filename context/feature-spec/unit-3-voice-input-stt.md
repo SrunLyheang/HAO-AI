@@ -177,7 +177,7 @@ OPENAI_API_KEY=
 
 ## Out of scope (explicitly — do not build now)
 
-- `requireUser()`, Clerk, allowlist on `/api/transcribe` (Unit 6 — same
+- `requireUser()`, Clerk on `/api/transcribe` (Unit 6 — same
   deferral Units 1/2 already carry for `/api/chat`).
 - Rate limiting / `usage_log` on this route (Unit 9).
 - Any persistence of the transcript, the turn, or the audio itself (Unit 7
@@ -327,7 +327,7 @@ git status && git log --oneline -1
 - Unit 5: replace the plain mic button with the charcoal Siri-style circle,
   `AnalyserNode`-driven pale-blue audio-reactive ring while held, still at
   idle; move this harness behind a dev flag.
-- Unit 6: `requireUser()` on `/api/transcribe` + an auth/allowlist rejection
+- Unit 6: `requireUser()` on `/api/transcribe` + an auth rejection
   test for the route (same pattern as the other two AI routes).
 - Unit 9: `usage_log` insert + per-minute/per-day rate check before the
   OpenAI call on this route; the size cap added here stays.
