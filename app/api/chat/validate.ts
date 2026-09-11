@@ -1,4 +1,29 @@
-import type { ChatResponse } from "@/types";
+import type { ChatResponse, HskLevel, Turn } from "@/types";
+import { isValidHskLevel } from "@/lib/hsk";
+
+export type ChatRequest = { history: Turn[]; message: string; hskLevel: HskLevel };
+
+/**
+ * Parses a raw request body into a ChatRequest, or null if it is not valid.
+ * External input — validated explicitly, never cast (code-standards.md).
+ */
+export function parseChatRequest(body: unknown): ChatRequest | null {
+  if (typeof body !== "object" || body === null) return null;
+  const b = body as Record<string, unknown>;
+
+  if (typeof b.message !== "string") return null;
+  if (!Array.isArray(b.history)) return null;
+  if (!isValidHskLevel(b.hskLevel)) return null;
+
+  for (const t of b.history) {
+    if (typeof t !== "object" || t === null) return null;
+    const turn = t as Record<string, unknown>;
+    if (turn.role !== "user" && turn.role !== "ai") return null;
+    if (typeof turn.text_zh !== "string") return null;
+  }
+
+  return { history: b.history as Turn[], message: b.message, hskLevel: b.hskLevel };
+}
 
 /**
  * Parses a raw model string into a ChatResponse, or null if it is not valid.
