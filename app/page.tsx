@@ -506,73 +506,76 @@ export default function Home() {
             background: "color-mix(in srgb, var(--surface) 80%, transparent)",
             borderTop: "1px solid var(--border)",
             padding: "var(--space-3) var(--space-4)",
-            display: "flex",
+            display: "grid",
+            gridTemplateColumns: "1fr auto 1fr",
             alignItems: "center",
             gap: "var(--space-3)",
           }}
         >
-          <button
-            type="button"
-            onClick={() => setInputMode((m) => (m === "talk" ? "type" : "talk"))}
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "var(--ink)",
-              cursor: "pointer",
-              padding: "var(--space-3)",
-              borderRadius: "var(--radius-sm)",
-            }}
-            aria-label={inputMode === "talk" ? "Switch to typing" : "Switch to talking"}
-          >
-            <Keyboard weight="bold" size={24} />
-          </button>
-
-          <div className={`rate-switcher${rateMenuOpen ? " open" : ""}`}>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", justifySelf: "start" }}>
             <button
               type="button"
-              onClick={() => setRateMenuOpen((o) => !o)}
+              onClick={() => setInputMode((m) => (m === "talk" ? "type" : "talk"))}
               style={{
                 background: "transparent",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-sm)",
+                border: "none",
                 color: "var(--ink)",
-                fontWeight: 600,
-                padding: "var(--space-2) var(--space-3)",
-                fontSize: "0.8125rem",
-                fontFamily: "var(--font-mono)",
                 cursor: "pointer",
+                padding: "var(--space-3)",
+                borderRadius: "var(--radius-sm)",
               }}
+              aria-label={inputMode === "talk" ? "Switch to typing" : "Switch to talking"}
             >
-              {speakingRate}x
+              <Keyboard weight="bold" size={24} />
             </button>
-            <div className="rate-options">
-              {SPEAKING_RATES.filter((rate) => rate !== speakingRate).map((rate) => (
-                <button
-                  key={rate}
-                  type="button"
-                  onClick={() => {
-                    setSpeakingRate(rate);
-                    setRateMenuOpen(false);
-                  }}
-                  style={{
-                    background: "var(--surface)",
-                    color: "var(--text-secondary)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--radius-sm)",
-                    padding: "var(--space-2) var(--space-3)",
-                    fontSize: "0.8125rem",
-                    fontFamily: "var(--font-mono)",
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {rate}x
-                </button>
-              ))}
+
+            <div className={`rate-switcher${rateMenuOpen ? " open" : ""}`}>
+              <button
+                type="button"
+                onClick={() => setRateMenuOpen((o) => !o)}
+                style={{
+                  background: "transparent",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-sm)",
+                  color: "var(--ink)",
+                  fontWeight: 600,
+                  padding: "var(--space-2) var(--space-3)",
+                  fontSize: "0.8125rem",
+                  fontFamily: "var(--font-mono)",
+                  cursor: "pointer",
+                }}
+              >
+                {speakingRate}x
+              </button>
+              <div className="rate-options">
+                {SPEAKING_RATES.filter((rate) => rate !== speakingRate).map((rate) => (
+                  <button
+                    key={rate}
+                    type="button"
+                    onClick={() => {
+                      setSpeakingRate(rate);
+                      setRateMenuOpen(false);
+                    }}
+                    style={{
+                      background: "var(--surface)",
+                      color: "var(--text-secondary)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "var(--radius-sm)",
+                      padding: "var(--space-2) var(--space-3)",
+                      fontSize: "0.8125rem",
+                      fontFamily: "var(--font-mono)",
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {rate}x
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
-          <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
+          <div style={{ justifySelf: "center" }}>
             {inputMode === "talk" ? (
               <MicButton onRecordingComplete={(blob) => void handleRecordedAudio(blob)} onMicError={setMicError} />
             ) : (
@@ -627,6 +630,7 @@ export default function Home() {
               cursor: "not-allowed",
               padding: "var(--space-3)",
               borderRadius: "var(--radius-sm)",
+              justifySelf: "end",
             }}
           >
             <Plus weight="bold" size={24} />
@@ -659,11 +663,10 @@ export default function Home() {
         }
         @media (min-width: 640px) {
           .rate-options {
-            left: auto;
-            right: calc(100% + var(--space-2));
+            left: calc(100% + var(--space-2));
             bottom: 0;
             flex-direction: row;
-            transform: translateX(8px);
+            transform: translateX(-8px);
           }
           .rate-switcher.open .rate-options {
             transform: translateX(0);
