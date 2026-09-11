@@ -1,3 +1,27 @@
 @import "tailwindcss";
 
-/* Design tokens (minimalist-ui palette, type, spacing) are added in Unit 5. */
+:root {
+  --canvas:#F7F6F3; --surface:#FFFFFF; --surface-inset:#FBF3DB;
+  --surface-sunken:#F1F0EC; --scrim:rgba(17,17,17,.32);
+  --border:#EAEAEA; --border-strong:#D8D7D3; --focus-ring:#1F6C9F;
+  --ink:#111111; --text:#2F3437; --text-secondary:#787774;
+  --text-muted:#9B9A96; --text-inverse:#FFFFFF; --text-disabled:#B8B7B3;
+  --action:#111111; --action-hover:#333333;
+  --mic-ring:#8FC7E8; --mic-ring-track:#E1F3FE;
+  --live-bg:#E1F3FE; --live-text:#1F6C9F;
+  --warn-bg:#FBF3DB; --warn-text:#956400;
+  --ok-bg:#EDF3EC; --ok-text:#346538;
+  --err-bg:#FDEBEC; --err-text:#9F2F2D;
+  --font-serif:'Newsreader','Instrument Serif','Noto Serif SC',Georgia,serif;
+  --font-sans:'Geist Sans','SF Pro Text','Helvetica Neue',system-ui,sans-serif;
+  --font-mono:'Geist Mono','SF Mono','JetBrains Mono',ui-monospace,monospace;
+  --radius-sm:4px; --radius-md:8px; --radius-lg:12px; --radius-full:9999px;
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px;
+  --space-6:24px; --space-8:32px; --space-12:48px; --space-16:64px;
+}
+
+body {
+  background: var(--canvas);
+  color: var(--text);
+  font-family: var(--font-sans);
+}

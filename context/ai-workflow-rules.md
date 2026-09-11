@@ -75,7 +75,7 @@ Do not edit, delete, regenerate, or reformat any of the following unless the use
 4. Clerk, Neon, Vercel, OpenAI, and Azure dashboard configuration. You cannot change these from code. When a unit needs a dashboard setting (disable public sign-up, set a spend cap, add an env var), stop and give the user the exact steps to do it themselves.
 5. Third-party component source. This project uses Radix UI primitives and Phosphor Icons as installed packages. Do not copy their source into the repo and do not patch files under `node_modules/`. If a primitive does not do what you need, wrap it in `components/`, do not fork it.
 6. `.env` files and any real secret. Never write a real key into a tracked file. Add new env vars to `.env.example` with a placeholder value and tell the user to set the real value in Vercel.
-7. `middleware.ts`, `lib/auth.ts`, and `lib/allowlist.ts` after Unit 6 is done — changes here are security-sensitive. Touch them only for a unit that explicitly concerns auth, and flag the change prominently for review.
+7. `middleware.ts` and `lib/auth.ts` after Unit 6 is done — changes here are security-sensitive. Touch them only for a unit that explicitly concerns auth, and flag the change prominently for review.
 
 If you think one of these files must change to complete a unit, stop and ask before touching it.
 
@@ -101,7 +101,7 @@ Do not start the next unit until every item below is true for the current one. R
 2. **Build passes.** `npm run build` completes with no errors. TypeScript is strict and clean — no new `any`, no `@ts-ignore`, no `eslint-disable` added to get it green.
 3. **App runs.** The app starts locally and the affected screen or flow works end to end by manual check. Describe the manual check you performed.
 4. **Deploy works.** If the unit changes anything that affects the deployed build (dependencies, env vars, routes, config), confirm the Vercel deployment succeeds and the live URL loads.
-5. **Auth boundary intact.** If the unit added or changed an API route: it calls `requireUser()` as its first statement, and there is a test proving an unauthenticated or non-allowlisted request is rejected before any provider or database call.
+5. **Auth boundary intact.** If the unit added or changed an API route: it calls `requireUser()` as its first statement, and there is a test proving an unauthenticated request is rejected before any provider or database call.
 6. **Invariants hold.** Walk the invariants in `architecture.md`. Confirm this unit violates none of them. Pay specific attention to: no secret reaches the client, every DB query is scoped by `user_id`, no user audio is persisted, pinyin is computed by `pinyin-pro` and never taken from the model, no provider call happens before rate and size limits pass.
 7. **Limits enforced.** If the unit touches input handling: audio ≤ 60s and ≤ 1 MB is enforced client-side, text ≤ 500 chars is enforced server-side, and the relevant caps (25 turns/conversation, 50 conversations/user, rate-limit windows) are respected.
 8. **No scope creep.** The diff contains only what this unit required. No speculative files, no unrelated refactors, no roadmap work. If something extra crept in, remove it or move it to its own reviewed step.
