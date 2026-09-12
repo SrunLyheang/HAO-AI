@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="100%" height="100%">
+  <!-- App Icon Base -->
+  <rect x="10" y="10" width="180" height="180" rx="40" fill="#FF6B6B" />
+
+  <!-- Panda Ears -->
+  <circle cx="45" cy="45" r="22" fill="#2B2D42" />
+  <circle cx="155" cy="45" r="22" fill="#2B2D42" />
+
+  <!-- Speech Bubble Head -->
+  <circle cx="100" cy="100" r="65" fill="#FFFFFF" />
+  <polygon points="45,135 25,170 75,155" fill="#FFFFFF" />
+
+  <!-- Eye Patches -->
+  <ellipse cx="68" cy="105" rx="14" ry="20" transform="rotate(35 68 105)" fill="#2B2D42" />
+  <ellipse cx="132" cy="105" rx="14" ry="20" transform="rotate(-35 132 105)" fill="#2B2D42" />
+
+  <!-- Eye Sparkles -->
+  <circle cx="70" cy="98" r="4" fill="#FFFFFF" />
+  <circle cx="130" cy="98" r="4" fill="#FFFFFF" />
+
+  <!-- Sound Wave Smile -->
+  <g stroke="#FF6B6B" stroke-width="6" stroke-linecap="round">
+    <line x1="80" y1="137" x2="80" y2="143" />
+    <line x1="90" y1="133" x2="90" y2="147" />
+    <line x1="100" y1="129" x2="100" y2="151" />
+    <line x1="110" y1="133" x2="110" y2="147" />
+    <line x1="120" y1="137" x2="120" y2="143" />
+  </g>
+</svg>

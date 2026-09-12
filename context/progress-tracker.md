@@ -21,6 +21,139 @@ change.
 
 ## Completed
 
+- 2026-09-12: **Mockup-driven feature adoption**, following a
+  requirements-grilling session against a Stitch-generated redesign the user
+  shared (a "hao.AI" screenshot with streaks, a scenario picker, a display-
+  density toggle, quick-reply chips, a richer correction callout, per-message
+  playback speed, an accuracy score, tier badges, and a shadowing-drill
+  button). Adopted only what didn't collide with documented scope and cleared
+  the user's own "easy to add" bar:
+  - **Display Support toggle** — new `components/DisplaySupportToggle.tsx`,
+    a 4-way segmented control (All / Hanzi+Pinyin / Hanzi Only / Audio)
+    wired into `app/page.tsx` via a new `DisplaySupportMode` type
+    (`types/index.ts`) and a `localStorage`-backed `useSyncExternalStore`
+    (`display_support` key), same pattern as the existing `hsk_level`/
+    `zh_only_mode`/`text_scale` controls. Conditionally hides the AI turn's
+    pinyin/English/Hanzi lines; the correction disclosure is unaffected by
+    this mode.
+  - **Per-message speaking rate**, replacing the single app-wide rate
+    switcher. The old `speakingRate`/`rateMenuOpen` state and the bottom-bar
+    rate-switcher UI (plus its `.rate-switcher`/`.rate-options` CSS) were
+    removed from `app/page.tsx`; a `turnRates: Record<number, SpeakingRate>`
+    map replaces them, with a small 0.75x/1x/1.5x button row rendered next to
+    each AI turn's replay button (`SPEAKING_RATES`, unchanged stops).
+    `speak()` now reads `turnRates[index] ?? 1` instead of one global value.
+    No DB implication — `speaking_rate` in `architecture.md`'s `settings`
+    table was already "not yet built"; this was pure client React state
+    before and after.
+  - **"Native Polish Tip" correction restyle** — `components/
+    CorrectionDisclosure.tsx`'s trigger label changed from "Correction" to
+    "Native Polish Tip", and its content now leads with a small "Easy Fix"
+    pill using the new `--brand-accent` token. Same `correction: string`
+    prop, same Radix Collapsible mechanics, no schema change — deliberately
+    not the mockup's strikethrough-diff view (would need DeepSeek to return
+    structured before/after text; rejected as not "easy").
+  - **Brand-accent token exception** — `app/globals.css` gained
+    `--brand-accent`/`--brand-accent-hover`/`--brand-accent-text`
+    (`#FF6B6B`, sourced from the untracked `app/icon.svg` panda mark, which
+    matches the mockup's accent color). This is a narrow, documented
+    exception to `code-standards.md`'s "accents are semantic only" rule —
+    scoped to the wordmark icon and the "Easy Fix" tag; every other pastel
+    (`--live-*`, `--warn-*`, `--ok-*`, `--err-*`) stays semantic-only.
+    `app/page.tsx`'s top-left wordmark now renders `<img src="/icon.svg">`
+    (served automatically by Next.js's `app/icon.svg` file convention — no
+    new route needed) next to the "hao.AI" text.
+  - **Rejected outright** (named conflicts with `project-overview.md`'s
+    out-of-scope list, not revisited): the streak/goal/round-count dashboard
+    header, the scenario/lesson picker and "Today's Goal" banner, the
+    accuracy-score badge on user turns, the "SCHOLAR" tier badge, and the
+    unlabeled book icon (purpose never clarified). Also rejected: the full
+    shadowing-drill (mic re-record + comparison) feature and per-word slow
+    playback — not out-of-scope, but nontrivial (word-level audio
+    segmentation) and never actually requested once the mockup's simpler
+    per-message-speed reading was confirmed.
+  - **Shelved, not decided** — streak counter and an ephemeral (non-
+    persisted) version of the quick-reply chips; see "Open Questions" above.
+  `ui-context.md` and `code-standards.md` updated in the same change (see
+  their own diffs) to document the new control, the per-message rate model,
+  the restyled correction component, and the brand-accent exception, per
+  `ai-workflow-rules.md` §6.2. `npm run build`/`lint`/`test` (86 tests, no new
+  ones needed — this is display logic already covered by existing
+  rendering, not new branching worth its own check) all green. Manually
+  verified in a live browser (`browse` skill against the already-running
+  `npm run dev`): all four display-support modes render correctly, the
+  per-message rate row is independent per turn, and the restyled correction
+  callout matches the mockup's look (verified via a static token-accurate
+  preview after a live DeepSeek round trip intermittently 500'd — see below).
+  **Unrelated pre-existing issue noticed, not fixed** (out of this session's
+  scope): `POST /api/chat` intermittently returned a `500` with
+  `SyntaxError: Unexpected end of JSON input` during manual testing — looks
+  like a DeepSeek response-parsing edge case in the existing route, unrelated
+  to anything touched here. Flagging per `ai-workflow-rules.md` §6.7 ("never
+  let code and docs drift silently... report it").
+
+- 2026-09-12 (same day, follow-up): **Turn cards + bigger controls**, per a
+  direct user request against the same mockup ("make the buttons bigger and
+  make the chat container just like the screenshot"). Both AI and user turns
+  are now wrapped in a card (`--surface`/`--surface-sunken`, `--border`,
+  `--radius-lg`, the one permitted `0 2px 8px` shadow ceiling — extending
+  that ceiling's use beyond the History panel/level dialog to every turn
+  card, a deliberate part of the Q12/Q13 "revise the token system toward
+  this mockup" decision already made this session, not a new one). AI turn
+  cards gained a header row (a small `--brand-accent` circle badge with a
+  Phosphor `Info` glyph, "hao.AI Tutor · {rate}x" label, and a timestamp)
+  and moved the replay button + per-message rate row to a footer below a
+  divider, matching the mockup's layout more closely than the earlier
+  top-right-stacked version. New client-only `turnTimestamps: number[]`
+  state in `app/page.tsx` (seeded via a lazy `useState` initializer, appended
+  alongside every `setHistory` call in `send()`) and a `formatTurnTime`
+  helper — display-only, not part of `Turn`, `ChatResponse`, or any API
+  contract. Bumped icon/font/padding sizes on the small controls (HSK tag,
+  history icon, A-/A+, `ZhOnlyToggle`, `DisplaySupportToggle`, bottom-bar
+  icons, per-turn replay/rate buttons) — the mic button itself was
+  deliberately left untouched (already enlarged in an earlier session, with
+  a detailed pixel-tied animation spec; resizing it wasn't asked for here).
+  **Regression caught and fixed in the same step:** the corner controls were
+  `position: absolute`, so adding the Display Support toggle's four buttons
+  made the top-left cluster wide enough to visually overlap the top-right
+  HSK tag/history icon at 400px width — two absolutely-positioned siblings
+  don't push each other when either wraps. Fixed by converting both corner
+  clusters into one normal-flow flex header (`flex-wrap: wrap`,
+  `justify-content: space-between`), so they wrap onto their own lines at
+  narrow widths instead of overlapping; the transcript column's top padding
+  was also simplified since it no longer needs to reserve space for an
+  absolutely-positioned header. Verified at 400px via `browse`: no
+  horizontal scroll (`document.documentElement.scrollWidth >
+  document.documentElement.clientWidth` is `false`), header wraps cleanly.
+  **Also noticed, not part of this change:** a concurrent edit (from outside
+  this session) added a `disabled`/`disabledMessage` prop pair to
+  `components/MicButton.tsx` and wired it in `app/page.tsx` to block
+  recording while TTS is playing (`MIC_BLOCKED_MESSAGE`). Left in place — it
+  merged cleanly with this session's edits and looks correct.
+  `npm run build`/`lint`/`test` (86 tests) all green after both the restyle
+  and the responsive fix. Manually verified in a live browser (desktop
+  1280px, mobile 400px): turn cards render correctly for both roles,
+  timestamps populate on new turns, header wraps without overlap at 400px.
+
+- 2026-09-12 (same day, second follow-up): **Display Support converted to a
+  popover; sizes moderated.** User clarified the "too big/zoomed" look was
+  their own browser at 50% zoom, not a real bug — but asked for a general
+  size sanity check plus one concrete change: the Display Support control
+  (4 always-visible buttons) was crowding the header, especially at 400px.
+  Ran `/impeccable` (narrow-refinement mode, no `PRODUCT.md` in this repo —
+  proceeded on the incumbent implementation per its own routing rule) and
+  its mechanical detector (`detect.mjs`, zero findings) over the changed
+  files. Converted `components/DisplaySupportToggle.tsx` from a segmented
+  row to a single trigger pill + Radix Popover, matching `HskPicker.tsx`'s
+  existing pattern exactly (trigger pill, `Check` on the active row,
+  click-to-select-and-close) — collapses 4 header buttons to 1. Moderated
+  the same session's earlier size bumps back down (HSK tag, history icon,
+  A-/A+, `ZhOnlyToggle`, bottom-bar icons, per-turn replay/rate buttons) to
+  values between the pre-mockup originals and the earlier bumped pass —
+  bigger than before, not maxed out. `npm run build`/`lint`/`test` (86
+  tests) green; verified live at 1280px and 400px — header now wraps onto
+  at most two tidy rows, popover opens/selects correctly, no crowding.
+
 - 2026-09-11: **Unit 5 implemented** per
   `context/feature-spec/unit-5-one-screen-siri-mic.md`, then extended with
   several live user usability requests in the same session (see below).
@@ -482,6 +615,24 @@ route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → 
 ## Open Questions
 
 - None blocking. Unit 0b prerequisites are parked (see "Deferred").
+- **Streak counter** (4-day-streak-style UI, shown in a Stitch-generated
+  mockup the user shared 2026-09-12): explicitly out of scope per
+  `project-overview.md` ("Streaks, XP, points, levels, badges, progress
+  charts, or any dashboard or statistics screen"). User shelved it for now
+  rather than adopting or rejecting outright. If revisited, needs: a scope
+  amendment to `project-overview.md` removing that clause, a "day" definition
+  (local calendar day vs. server UTC — local was the tentative call), a
+  reset-vs-grace-period decision (hard reset was the tentative call), and new
+  `settings` columns (`streak_count`, `last_active_date`, plus a timezone
+  field that doesn't exist yet).
+- **Ephemeral quick-reply suggestion chips** (same mockup): the persisted/
+  scenario-tracked version is out of scope ("target-phrase lists"), but a
+  cheap ephemeral version — DeepSeek returns 2-3 example next-things-to-say
+  alongside `reply_zh`/`reply_en`/`correction`, shown as tappable chips,
+  never stored — was identified as not actually in conflict with that
+  exclusion. User shelved it for now. If revisited: extend `ChatResponse` and
+  `app/api/chat/prompt.ts`'s expected JSON shape with one new field, no
+  schema/persistence change.
 
 ## Deferred — revisit before shipping
 

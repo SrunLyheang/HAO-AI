@@ -113,10 +113,15 @@ sign-up open — anyone can create an account, no allowlist.
 - HSK level selector (1–6) in a corner popover, persisted per user.
 - System prompt constrains the model to the selected level's cumulative HSK
   vocabulary.
+- Display Support toggle (All / Hanzi+Pinyin / Hanzi Only / Audio) controlling
+  which of an AI turn's lines are shown, persisted client-side like the HSK
+  level (added 2026-09-12).
 - Collapsible per-turn correction of the user's Chinese (more natural phrasing,
-  grammar fixes) from the same model call.
-- Speaking-rate toggle (0.75x / 1x / 1.5x), applied client-side to TTS
-  playback via `HTMLAudioElement.playbackRate`.
+  grammar fixes) from the same model call, styled as a "Native Polish Tip"
+  callout (renamed 2026-09-12).
+- Per-message speaking-rate control (0.75x / 1x / 1.5x), applied client-side
+  to TTS playback via `HTMLAudioElement.playbackRate` — selected per AI turn,
+  not a single app-wide setting (changed from a global toggle 2026-09-12).
 
 Out: a visible "above level" indicator on content words outside the selected
 level was built and then removed for inaccuracy (dictionary max-matching
@@ -175,11 +180,14 @@ misfired in practice — see `progress-tracker.md`).
 - Conversation replies via DeepSeek V4, returned as structured JSON
   (`reply_zh`, `reply_en`, `correction`).
 - Deterministic pinyin generation via `pinyin-pro`.
-- Text-to-speech via ElevenLabs, with a client-side 0.75x/1x/1.5x
-  playback-rate toggle.
+- Text-to-speech via ElevenLabs, with a client-side, per-message
+  0.75x/1x/1.5x playback-rate control.
 - HSK 1–6 level selector, persisted per user, injected into the system prompt
   along with the bundled cumulative HSK word lists.
-- Collapsible per-turn correction of the user's Chinese.
+- Display Support toggle (All / Hanzi+Pinyin / Hanzi Only / Audio), persisted
+  client-side.
+- Collapsible per-turn correction of the user's Chinese, styled as a "Native
+  Polish Tip" callout.
 - Automatic and manual (replay) audio playback of AI turns.
 - Postgres (Neon) storage of settings, conversations, and turns via Drizzle.
 - Restore of the in-progress conversation on load.
