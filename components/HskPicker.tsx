@@ -28,6 +28,7 @@ export default function HskPicker({ level, onChange }: HskPickerProps) {
       <Popover.Trigger asChild>
         <button
           type="button"
+          title="Change HSK level"
           style={{
             borderRadius: "var(--radius-full)",
             border: "1px solid var(--border)",
