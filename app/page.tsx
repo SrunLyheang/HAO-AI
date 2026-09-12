@@ -81,7 +81,7 @@ function persistDisplaySupport(mode: DisplaySupportMode) {
 // (chrome — buttons, labels, icons — stays fixed). Local-only, like hsk_level
 // before the DB write path exists.
 const TEXT_SCALE_STORAGE_KEY = "text_scale";
-const TEXT_SCALES = [0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.8, 2] as const;
+const TEXT_SCALES = [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.8, 2] as const;
 type TextScale = (typeof TEXT_SCALES)[number];
 
 const TEXT_SCALE_CHANGE_EVENT = "text-scale-change";
@@ -424,6 +424,7 @@ export default function Home() {
           type="button"
           disabled
           aria-disabled="true"
+          title="Conversation history (coming soon)"
           style={{
             background: "transparent",
             border: "none",
@@ -600,6 +601,7 @@ export default function Home() {
                       type="button"
                       onClick={() => void speak(turn.text_zh, i)}
                       disabled={playingIndex !== null}
+                      title="Play audio"
                       style={{
                         background: "transparent",
                         border: "none",
@@ -684,6 +686,7 @@ export default function Home() {
                 borderRadius: "var(--radius-sm)",
               }}
               aria-label={inputMode === "talk" ? "Switch to typing" : "Switch to talking"}
+              title={inputMode === "talk" ? "Switch to typing" : "Switch to talking"}
             >
               <Keyboard weight="bold" size={24} />
             </button>
@@ -723,6 +726,7 @@ export default function Home() {
                   type="button"
                   onClick={() => void send(input)}
                   disabled={pending || input.trim().length === 0}
+                  title="Send"
                   style={{
                     background: "transparent",
                     border: "none",
@@ -742,6 +746,7 @@ export default function Home() {
             type="button"
             disabled
             aria-disabled="true"
+            title="Attach (coming soon)"
             style={{
               background: "transparent",
               border: "none",
