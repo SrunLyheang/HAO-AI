@@ -84,6 +84,21 @@ There is no separate "AI accent". AI turns are the hero content and
 stay monochrome (serif, `--ink`). Pale-blue (`--live-*`) is the one
 signal that the mic or the AI is active right now.
 
+### Brand accent (narrow exception, added 2026-09-12)
+
+| Token | Hex | Use |
+|---|---|---|
+| `--brand-accent` | `#FF6B6B` | Sourced from `app/icon.svg`'s panda mark. Decorative use is restricted to: the wordmark icon (top-left), and the "Easy Fix" tag inside the Native Polish Tip callout. |
+| `--brand-accent-hover` | `#E85A5A` | Hover state, if `--brand-accent` is ever used on an interactive element. |
+| `--brand-accent-text` | `#FFFFFF` | Text/icon color on top of `--brand-accent`. |
+
+This is the one deliberate exception to "color is a scarce resource used
+only for semantic state." It does not replace or loosen that rule
+elsewhere — every semantic pastel above stays reserved for its state.
+Do not spread `--brand-accent` to new elements (mic button, primary
+buttons, etc.) without a fresh, explicit decision; it was scoped
+narrowly on purpose.
+
 ## `:root` block
 
 Define once in `app/globals.css`. Nothing else declares a color.
@@ -104,6 +119,7 @@ Define once in `app/globals.css`. Nothing else declares a color.
   --font-serif:'Newsreader','Instrument Serif','Noto Serif SC',Georgia,serif;
   --font-sans:'Geist Sans','SF Pro Text','Helvetica Neue',system-ui,sans-serif;
   --font-mono:'Geist Mono','SF Mono','JetBrains Mono',ui-monospace,monospace;
+  --brand-accent:#FF6B6B; --brand-accent-hover:#E85A5A; --brand-accent-text:#FFFFFF;
   --radius-sm:4px; --radius-md:8px; --radius-lg:12px; --radius-full:9999px;
   --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px;
   --space-6:24px; --space-8:32px; --space-12:48px; --space-16:64px;
@@ -199,14 +215,18 @@ library. Style every primitive with the tokens above.
 - Empty state: centered `--text-muted` line, "No past conversations
   yet."
 
-### Correction — Radix Collapsible
+### Correction ("Native Polish Tip") — Radix Collapsible
 
 - Sits under the user's turn. Collapsed by default.
 - Trigger: a left-aligned button, `--text-label`, `--text-secondary`,
   with a Phosphor `CaretRight` (bold) that rotates to `CaretDown`
-  when open. Label "Correction".
+  when open. Label "Native Polish Tip" (renamed 2026-09-12, restyled
+  from a mockup — same underlying mechanism, still driven by the single
+  model-returned `correction` string, no diff/strikethrough view).
 - Content: `--surface-inset` background, `--warn-text` text,
-  `--radius-md`, `--space-3` padding, `--space-2` top margin.
+  `--radius-md`, `--space-3` padding, `--space-2` top margin. Leads with
+  a small pill tag reading "Easy Fix" — `--brand-accent` background,
+  `--brand-accent-text`, `--radius-full`, `--text-tag`-scale, uppercase.
 - If the model returns no correction for a turn, render no trigger.
 
 ### Buttons
@@ -300,6 +320,23 @@ frame.
 **Hint.** Below the button: `--text-meta`, `--text-muted`. "Hold to
 talk" at rest, "Listening…" while held.
 
+### Display Support control (added 2026-09-12, converted to a popover same day)
+
+- A single trigger pill (`components/DisplaySupportToggle.tsx`, "Display:
+  {mode}") in the top-left corner cluster, opening a Radix Popover listing
+  all 4 options — same pattern as `HskPicker` (trigger pill, `Check` glyph
+  on the active row, click-to-select-and-close). Originally shipped as a
+  4-way always-visible segmented row; converted to a popover the same day
+  after it crowded the header at narrow widths.
+- Options: "All (Hanzi + Pinyin + English)" (the default), "Hanzi + Pinyin",
+  "Hanzi Only", "Audio Challenge" (hides all three text lines — replay
+  button and per-message speed row still show).
+- A global, `localStorage`-backed preference (`display_support` key,
+  `useSyncExternalStore`, same pattern as `hsk_level`/`zh_only_mode`),
+  applying live to every already-rendered AI turn, not just future ones.
+  Does not affect the correction disclosure, which renders independently
+  of this mode.
+
 ### Type/talk toggle
 
 - A ghost icon button, Phosphor `Keyboard` (bold), sits at the left end of
@@ -371,32 +408,40 @@ no navbar, no footer, no other pages.
 |                        ...                    |
 |                                               |
 +-----------------------------------------------+
-| [kbd] [0.75x|1x|1.5x]    ( o mic )      [ + ]    |  fixed bottom bar
+| [kbd]              ( o mic )              [ + ] |  fixed bottom bar
 +-----------------------------------------------+
 ```
 
 - **Corner controls** (top): absolutely positioned, `--space-4` from
-  the top and sides. Left: nothing (or a small static `hao.AI`
-  wordmark in `--text-muted`, `--text-meta`). Right: HSK tag, then the
+  the top and sides. Left: the `app/icon.svg` mark (24px) next to the
+  `hao.AI` wordmark (serif), then the Display Support toggle, then the
+  `A-`/`A+` text-scale pair, then the zh-only toggle. Right: HSK tag, then the
   history icon button, then Clerk's `<UserButton />` (sign-out) as the
   outermost control, `--space-2` apart (Unit 6 decision, 2026-09-11).
 - **Transcript column**: vertically scrolling, `max-width: 640px`,
   centered, `--space-4` side gutter, `--space-16` bottom padding so
   the last turn clears the bottom bar. Auto-scrolls to the newest
   turn on append.
-- **Turn**: AI turn = pinyin / Chinese hero / English stacked, a ghost
-  `SpeakerHigh` replay button aligned to the turn's start. User turn =
+- **Turn**: AI turn = pinyin / Chinese hero / English stacked (lines shown
+  per the Display Support toggle), a ghost `SpeakerHigh` replay button plus
+  the per-message speed row beneath it, aligned to the turn's start. User turn =
   one `--font-sans` line in `--text` labelled `You` (`--text-label`),
   with the Collapsible correction beneath.
 - **Fixed bottom bar**: `position: fixed; inset-inline: 0; bottom: 0`,
   blurred `--surface`, `border-top: 1px solid var(--border)`,
   `--space-3` block padding, `--space-4` side gutter. Left: the
-  type/talk toggle icon, then the speaking-rate switcher (as shipped:
-  `0.75x` / `1x` / `1.5x`, current rate shown, tap to open the other two
-  as a small menu — not a fixed two-segment toggle). Center: mic
+  type/talk toggle icon only (the speaking-rate switcher that used to sit
+  here was moved per-message, see below — 2026-09-12). Center: mic
   button, or the typed-input row when in typed mode (see
   "Type/talk toggle"). Right: "New conversation" — icon-only Phosphor
   `Plus` ghost button below 480px, text button above.
+- **Per-message speaking rate** (moved out of the bottom bar 2026-09-12):
+  each AI turn gets its own `0.75x` / `1x` / `1.5x` row, right-aligned
+  under that turn's replay button — three small buttons, `--text-meta`
+  scale, active one filled `--border-strong` + bold, same active-segment
+  treatment as elsewhere. Defaults to `1x` per turn; selecting a rate
+  only affects that turn's next playback, not other turns or a global
+  default.
 - **25-turn cap**: at 25 turns the mic button is disabled and the
   status line reads "This conversation is full — start a new one."
 
