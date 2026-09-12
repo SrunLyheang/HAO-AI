@@ -12,6 +12,7 @@
   --warn-bg:#FBF3DB; --warn-text:#956400;
   --ok-bg:#EDF3EC; --ok-text:#346538;
   --err-bg:#FDEBEC; --err-text:#9F2F2D;
+  --brand-accent:#FF6B6B; --brand-accent-hover:#E85A5A; --brand-accent-text:#FFFFFF;
   --font-serif:'Newsreader','Instrument Serif','Noto Serif SC',Georgia,serif;
   --font-sans:'Geist Sans','SF Pro Text','Helvetica Neue',system-ui,sans-serif;
   --font-mono:'Geist Mono','SF Mono','JetBrains Mono',ui-monospace,monospace;
