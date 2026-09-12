@@ -38,8 +38,8 @@ export default function ZhOnlyToggle({ checked, onChange }: ZhOnlyToggleProps) {
       <span
         style={{
           position: "relative",
-          width: 34,
-          height: 20,
+          width: 38,
+          height: 22,
           borderRadius: "var(--radius-full)",
           background: checked ? "var(--text-muted)" : "var(--surface-sunken)",
           border: "1px solid var(--border)",
@@ -51,9 +51,9 @@ export default function ZhOnlyToggle({ checked, onChange }: ZhOnlyToggleProps) {
           style={{
             position: "absolute",
             top: 1,
-            left: checked ? 15 : 1,
-            width: 16,
-            height: 16,
+            left: checked ? 17 : 1,
+            width: 18,
+            height: 18,
             borderRadius: "50%",
             background: "var(--surface)",
             boxShadow: "0 1px 2px rgba(0,0,0,0.15)",

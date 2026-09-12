@@ -28,7 +28,7 @@ export default function CorrectionDisclosure({ correction }: CorrectionDisclosur
         }}
       >
         {open ? <CaretDown weight="bold" size={18} /> : <CaretRight weight="bold" size={18} />}
-        Correction
+        Native Polish Tip
       </Collapsible.Trigger>
       <Collapsible.Content
         style={{
@@ -40,7 +40,24 @@ export default function CorrectionDisclosure({ correction }: CorrectionDisclosur
           fontSize: "1.0625rem",
         }}
       >
-        {correction}
+        <span
+          style={{
+            display: "inline-block",
+            background: "var(--brand-accent)",
+            color: "var(--brand-accent-text)",
+            borderRadius: "var(--radius-full)",
+            padding: "var(--space-1) var(--space-2)",
+            fontSize: "0.6875rem",
+            fontFamily: "var(--font-sans)",
+            fontWeight: 600,
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
+            marginBottom: "var(--space-2)",
+          }}
+        >
+          Easy Fix
+        </span>
+        <p>{correction}</p>
       </Collapsible.Content>
     </Collapsible.Root>
   );

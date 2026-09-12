@@ -7,7 +7,8 @@ import { isMisTap, smoothLevel } from "./mic-button-helpers";
 type MicButtonProps = {
   onRecordingComplete: (blob: Blob) => void;
   onMicError: (message: string) => void;
-  disabled?: boolean; // true at the 25-turn cap (Unit 9) — inert prop for now
+  disabled?: boolean; // true at the 25-turn cap (Unit 9) and while the bot is speaking
+  disabledMessage?: string; // shown via onMicError if the user presses while disabled
 };
 
 // Duplicated from app/page.tsx's own copies (client-to-client, no lib/ import
@@ -33,7 +34,7 @@ function pickSupportedMimeType(): string | null {
 
 type Ripple = { start: number };
 
-export default function MicButton({ onRecordingComplete, onMicError, disabled }: MicButtonProps) {
+export default function MicButton({ onRecordingComplete, onMicError, disabled, disabledMessage }: MicButtonProps) {
   const [holding, setHolding] = useState(false);
   const [hint, setHint] = useState<"idle" | "listening" | "mistap">("idle");
 
@@ -252,7 +253,11 @@ export default function MicButton({ onRecordingComplete, onMicError, disabled }:
   }
 
   function handlePointerDown() {
-    if (disabled || holdingRef.current) return;
+    if (disabled) {
+      if (disabledMessage) onMicError(disabledMessage);
+      return;
+    }
+    if (holdingRef.current) return;
     holdingRef.current = true;
     pressStartRef.current = performance.now();
     fadingRef.current = false;

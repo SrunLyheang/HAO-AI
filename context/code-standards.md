@@ -37,7 +37,7 @@ Implementation rules for hao.AI. These bind all code in the repo. They sit under
 ## Styling
 
 - Use the design tokens from `app/globals.css` as CSS custom properties. No hardcoded hex, rgb, or px color values in components. If a token is missing, add it to `globals.css`, don't inline the value.
-- Follow the minimalist-ui system: canvas `--canvas`, surface `--surface`, border `--border` (always `1px solid`), text `--text`, muted `--muted`, ink `--ink`. Accent pastels are semantic only — recording, correction/above-level, complete — never decoration.
+- Follow the minimalist-ui system: canvas `--canvas`, surface `--surface`, border `--border` (always `1px solid`), text `--text`, muted `--muted`, ink `--ink`. Accent pastels are semantic only — recording, correction/above-level, complete — never decoration. The one exception (2026-09-12): `--brand-accent` (`#FF6B6B`, from `app/icon.svg`), scoped narrowly to the wordmark icon and the Native Polish Tip's "Easy Fix" tag — see `ui-context.md`. Do not extend it to other elements without an explicit decision.
 - Border radius is `8px` or `12px` maximum. No `rounded-full` on containers, cards, or primary buttons (the mic button is the one intentional circle).
 - No gradients, no glow, no heavy shadows. Hover shadow ceiling is `0 2px 8px rgba(0,0,0,0.04)`.
 - Spacing uses the 8px scale (4 / 8 / 12 / 16 / 24 / 32 / 48 / 64). Content column max-width 640px. Side gutter is set once on one outer wrapper, never as a `padding` shorthand that zeroes the sides.
