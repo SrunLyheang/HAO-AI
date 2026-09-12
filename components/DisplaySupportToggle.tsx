@@ -3,25 +3,34 @@
 import { useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { Check } from "@phosphor-icons/react";
-import type { HskLevel } from "@/types";
+import type { DisplaySupportMode } from "@/types";
 
-type HskPickerProps = {
-  level: HskLevel;
-  onChange: (level: HskLevel) => void;
+type Option = { value: DisplaySupportMode; label: string };
+
+const OPTIONS: Option[] = [
+  { value: "all", label: "All (Hanzi + Pinyin + English)" },
+  { value: "hanzi_pinyin", label: "Hanzi + Pinyin" },
+  { value: "hanzi_only", label: "Hanzi Only" },
+  { value: "audio", label: "Audio Challenge" },
+];
+
+const SHORT_LABEL: Record<DisplaySupportMode, string> = {
+  all: "All",
+  hanzi_pinyin: "Hanzi+Pinyin",
+  hanzi_only: "Hanzi Only",
+  audio: "Audio",
 };
 
-const LEVELS: HskLevel[] = [1, 2, 3, 4, 5, 6];
+type DisplaySupportToggleProps = {
+  mode: DisplaySupportMode;
+  onChange: (next: DisplaySupportMode) => void;
+};
 
-export default function HskPicker({ level, onChange }: HskPickerProps) {
+// One trigger + popover, same pattern as HskPicker — keeps the header to one
+// control instead of four always-visible segments (which crowded narrow
+// widths).
+export default function DisplaySupportToggle({ mode, onChange }: DisplaySupportToggleProps) {
   const [open, setOpen] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-
-  function selectLevel(next: HskLevel) {
-    onChange(next);
-    setOpen(false);
-    setShowConfirm(true);
-    setTimeout(() => setShowConfirm(false), 2000);
-  }
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
@@ -31,35 +40,37 @@ export default function HskPicker({ level, onChange }: HskPickerProps) {
           style={{
             borderRadius: "var(--radius-full)",
             border: "1px solid var(--border)",
-            background: showConfirm ? "var(--ok-bg)" : "var(--surface)",
-            color: showConfirm ? "var(--ok-text)" : "var(--text-secondary)",
-            fontSize: "0.9375rem",
-            letterSpacing: "0.05em",
-            textTransform: "uppercase",
+            background: "var(--surface)",
+            color: "var(--text-secondary)",
+            fontSize: "0.8125rem",
             padding: "var(--space-2) var(--space-3)",
             cursor: "pointer",
+            fontFamily: "var(--font-sans)",
           }}
         >
-          {showConfirm ? "Saved" : `HSK ${level}`}
+          Display: {SHORT_LABEL[mode]}
         </button>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content
           sideOffset={8}
-          align="end"
+          align="start"
           style={{
             background: "var(--surface)",
             border: "1px solid var(--border-strong)",
             borderRadius: "var(--radius-md)",
             padding: "var(--space-2)",
-            minWidth: 140,
+            minWidth: 220,
           }}
         >
-          {LEVELS.map((l) => (
+          {OPTIONS.map((option) => (
             <button
-              key={l}
+              key={option.value}
               type="button"
-              onClick={() => selectLevel(l)}
+              onClick={() => {
+                onChange(option.value);
+                setOpen(false);
+              }}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -69,7 +80,7 @@ export default function HskPicker({ level, onChange }: HskPickerProps) {
                 border: "none",
                 borderRadius: "var(--radius-sm)",
                 padding: "var(--space-3)",
-                fontSize: "1.0625rem",
+                fontSize: "0.9375rem",
                 color: "var(--ink)",
                 cursor: "pointer",
                 textAlign: "left",
@@ -77,8 +88,8 @@ export default function HskPicker({ level, onChange }: HskPickerProps) {
               onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-sunken)")}
               onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
             >
-              HSK {l}
-              {l === level && <Check weight="bold" size={18} color="var(--live-text)" />}
+              {option.label}
+              {option.value === mode && <Check weight="bold" size={18} color="var(--live-text)" />}
             </button>
           ))}
         </Popover.Content>

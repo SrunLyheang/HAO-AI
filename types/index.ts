@@ -17,6 +17,11 @@ export type HskLevel = 1 | 2 | 3 | 4 | 5 | 6;
 // for sounding too bad.
 export type SpeakingRate = 0.75 | 1 | 1.5;
 
+// Which lines of an AI turn are shown. A pure client-side display
+// preference (never sent to the server) — see app/page.tsx's
+// DISPLAY_SUPPORT_STORAGE_KEY, stored the same way as hsk_level.
+export type DisplaySupportMode = "all" | "hanzi_pinyin" | "hanzi_only" | "audio";
+
 /** One transcript entry as rendered by the UI. */
 export type Turn =
   | { role: "user"; text_zh: string }

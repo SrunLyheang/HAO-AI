@@ -8,12 +8,18 @@ type CorrectionDisclosureProps = {
   correction: string;
 };
 
-export default function CorrectionDisclosure({ correction }: CorrectionDisclosureProps) {
+export default function CorrectionDisclosure({
+  correction,
+}: CorrectionDisclosureProps) {
   const [open, setOpen] = useState(false);
   if (correction === "") return null;
 
   return (
-    <Collapsible.Root open={open} onOpenChange={setOpen} style={{ marginTop: "var(--space-2)" }}>
+    <Collapsible.Root
+      open={open}
+      onOpenChange={setOpen}
+      style={{ marginTop: "var(--space-2)" }}
+    >
       <Collapsible.Trigger
         style={{
           display: "flex",
@@ -27,8 +33,12 @@ export default function CorrectionDisclosure({ correction }: CorrectionDisclosur
           cursor: "pointer",
         }}
       >
-        {open ? <CaretDown weight="bold" size={18} /> : <CaretRight weight="bold" size={18} />}
-        Correction
+        {open ? (
+          <CaretDown weight="bold" size={18} />
+        ) : (
+          <CaretRight weight="bold" size={18} />
+        )}
+        Native Polish Tip
       </Collapsible.Trigger>
       <Collapsible.Content
         style={{
@@ -40,7 +50,24 @@ export default function CorrectionDisclosure({ correction }: CorrectionDisclosur
           fontSize: "1.0625rem",
         }}
       >
-        {correction}
+        <span
+          style={{
+            display: "inline-block",
+            background: "var(--brand-accent)",
+            color: "var(--ink)",
+            borderRadius: "var(--radius-full)",
+            padding: "var(--space-1) var(--space-2)",
+            fontSize: "0.6875rem",
+            fontFamily: "var(--font-sans)",
+            fontWeight: 600,
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
+            marginBottom: "var(--space-2)",
+          }}
+        >
+          Easy Fix
+        </span>
+        <p>{correction}</p>
       </Collapsible.Content>
     </Collapsible.Root>
   );
