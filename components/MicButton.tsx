@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Microphone } from "@phosphor-icons/react";
 import { isMisTap, smoothLevel } from "./mic-button-helpers";
+import { MAX_AUDIO_BYTES } from "@/app/api/transcribe/validate";
 
 type MicButtonProps = {
   onRecordingComplete: (blob: Blob) => void;
@@ -11,12 +12,11 @@ type MicButtonProps = {
   disabledMessage?: string; // shown via onMicError if the user presses while disabled
 };
 
-// Duplicated from app/page.tsx's own copies (client-to-client, no lib/ import
-// across component boundaries per ai-workflow-rules.md §2.4) — same values
-// Unit 3 already used.
 const MIC_MIME_TYPES = ["audio/webm;codecs=opus", "audio/mp4", "audio/ogg"];
+// Client-side only — the server does not enforce a duration cap (see
+// validate.ts), this just avoids recording past the point the server would
+// reject on size.
 const MAX_RECORDING_MS = 60_000;
-const MAX_AUDIO_BYTES_CLIENT = 1 * 1024 * 1024;
 
 const BUTTON_SIZE = 96;
 const CANVAS_SIZE = 220;
@@ -242,7 +242,7 @@ export default function MicButton({
         const blob = new Blob(chunksRef.current, { type: mimeType });
         chunksRef.current = [];
         stream.getTracks().forEach((t) => t.stop());
-        if (blob.size > MAX_AUDIO_BYTES_CLIENT) {
+        if (blob.size > MAX_AUDIO_BYTES) {
           onMicError("Recording too large — try a shorter clip.");
           return;
         }
