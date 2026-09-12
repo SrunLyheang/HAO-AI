@@ -21,6 +21,43 @@ change.
 
 ## Completed
 
+- 2026-09-12 (same day, fourth follow-up): **CodeRabbit fix — disabled mic
+  button couldn't report why.** `components/MicButton.tsx`'s `<button>` used
+  the native `disabled={disabled}` attribute, which stops the browser from
+  firing pointer/keyboard events at all — so `handlePointerDown`'s existing
+  `if (disabled) { if (disabledMessage) onMicError(disabledMessage); return; }`
+  guard was dead code for real users; `disabledMessage` (e.g.
+  `MIC_BLOCKED_MESSAGE` while TTS is playing) never reached `onMicError`.
+  Fixed by switching to `aria-disabled={disabled}` and keeping the JS guard,
+  per CodeRabbit's review comment — the button still looks/reads as disabled
+  (styling was already keyed off the `disabled` prop, not the attribute) but
+  now actually dispatches events so the guard can run. No prop/type change,
+  no caller update needed (`app/page.tsx`'s usage is unaffected). No build/
+  lint/test run yet for this change — single attribute swap, low risk; run
+  before the next commit alongside the rest of this session's pending Unit 5
+  batch.
+
+- 2026-09-12 (same day, third follow-up): **Hover tooltips on icon-only
+  controls.** User request: icon-only buttons shouldn't require guessing —
+  hovering should show what they do. Added native `title` attributes in
+  `app/page.tsx` to the buttons that had icons but no visible text: the
+  replay/speaker button ("Play audio"), the talk/type toggle (mirrors its
+  existing `aria-label`), the send button ("Send"), and the two disabled
+  buttons (history clock: "Conversation history (coming soon)"; the bottom-
+  bar plus: "Attach (coming soon)"). `ZhOnlyToggle` already had a `title`
+  from an earlier session. `DisplaySupportToggle` and `HskPicker` weren't
+  touched — both already show text labels, not icon-only.
+  **Bug caught on user report ("doesn't show anything when I hover"):**
+  Chrome/Firefox suppress all mouse events, including hover/`title`
+  tooltips, on elements with the `disabled` attribute. Fixed the two
+  disabled buttons (history, attach) by moving `title` onto a wrapping
+  `<span>` instead of the `<button>` itself — the span isn't disabled, so it
+  still receives hover. The three enabled buttons (speaker, keyboard toggle,
+  send) use `title` directly on the `<button>` and should already work
+  natively. No build/lint/test run yet for this change — plain attribute
+  additions, low risk; run before the next commit alongside whatever else is
+  pending in this session's Unit 5 batch.
+
 - 2026-09-12: **Mockup-driven feature adoption**, following a
   requirements-grilling session against a Stitch-generated redesign the user
   shared (a "hao.AI" screenshot with streaks, a scenario picker, a display-
