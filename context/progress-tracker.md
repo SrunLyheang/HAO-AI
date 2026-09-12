@@ -21,6 +21,54 @@ change.
 
 ## Completed
 
+- 2026-09-12 (same day, fifth follow-up): **Architecture cleanup on
+  `app/page.tsx`** (795 lines → well under 400), following an
+  `/improve-codebase-architecture` review the user asked for, then asked to
+  implement in full. Four changes, all mechanical (no behavior/UI change):
+  1. **Four duplicated localStorage preferences collapsed into one factory.**
+     `hsk_level`, `zh_only_mode`, `display_support`, and `text_scale` each had
+     their own hand-written `read`/`getServer`/`subscribe`/`persist` quartet
+     for `useSyncExternalStore`. New `components/preference-store.ts`
+     (`createPersistedPreference<T>({ storageKey, changeEvent, fallback,
+     isValid, parse })`) replaces all four; `app/page.tsx` now just
+     instantiates `hskLevelPreference`/`zhOnlyModePreference`/
+     `displaySupportPreference`/`textScalePreference` and calls `.read`/
+     `.getServer`/`.subscribe`/`.persist` on them. Lives in `components/`, not
+     `lib/` — `lib/` is server-only per `architecture.md`'s boundary table
+     ("Must not contain: ... client-imported code") and this runs from a
+     Client Component.
+  2. **Per-turn rendering extracted to `components/TurnCard.tsx`.** The
+     ~230-line inline JSX for a single turn (user bubble vs. AI card, the
+     display-support branching, the per-turn rate buttons, the correction
+     disclosure) is now one `forwardRef` component; `app/page.tsx`'s
+     `history.map` is a single `<TurnCard ... />` call per turn.
+  3. **The transcribe/chat/speak pipeline extracted to
+     `components/conversation-client.ts`.** Three exported functions
+     (`transcribe`, `reply`, `speak`), each returning a typed
+     `ClientResult<T> = { ok: true; data: T } | { ok: false; error: string }`
+     instead of a raw `fetch` + hand-rolled `errorMessage` duplicated three
+     times. `app/page.tsx`'s `handleRecordedAudio()`/`send()`/`speak()` now
+     just call these and manage React state.
+  4. **Audio size cap de-duplicated across the client/server seam.**
+     `components/MicButton.tsx` had its own `MAX_AUDIO_BYTES_CLIENT = 1 *
+     1024 * 1024`, duplicating `app/api/transcribe/validate.ts`'s
+     `MAX_AUDIO_BYTES` (the actual server-enforced invariant #6 value).
+     `MicButton.tsx` now imports `MAX_AUDIO_BYTES` directly from
+     `validate.ts` (confirmed safe: that file is pure/HTTP-free, no
+     server-only APIs, so it's fine to import into a Client Component).
+     Also removed a stale comment on `MicButton.tsx` claiming the duplication
+     was required by "`ai-workflow-rules.md` §2.4" — that section does not
+     exist anywhere in the file; the comment also falsely claimed the values
+     were duplicated from `app/page.tsx`, which never had them. Flagging in
+     case the citation was meant to point at a real (if differently-worded)
+     rule elsewhere — none was found.
+  `npm run build`, `npm run lint`, `npx tsc --noEmit`, and `npm test`
+  (86 tests, unchanged — this was a structural extraction, not new logic)
+  all green after each of the four steps and again at the end. Not yet
+  manually re-verified in a live browser (no rendering/behavior change is
+  expected, but the Unit 5 manual-verification gap below still applies
+  regardless).
+
 - 2026-09-12 (same day, fourth follow-up): **CodeRabbit fix — disabled mic
   button couldn't report why.** `components/MicButton.tsx`'s `<button>` used
   the native `disabled={disabled}` attribute, which stops the browser from
