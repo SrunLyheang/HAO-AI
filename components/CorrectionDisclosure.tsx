@@ -8,12 +8,18 @@ type CorrectionDisclosureProps = {
   correction: string;
 };
 
-export default function CorrectionDisclosure({ correction }: CorrectionDisclosureProps) {
+export default function CorrectionDisclosure({
+  correction,
+}: CorrectionDisclosureProps) {
   const [open, setOpen] = useState(false);
   if (correction === "") return null;
 
   return (
-    <Collapsible.Root open={open} onOpenChange={setOpen} style={{ marginTop: "var(--space-2)" }}>
+    <Collapsible.Root
+      open={open}
+      onOpenChange={setOpen}
+      style={{ marginTop: "var(--space-2)" }}
+    >
       <Collapsible.Trigger
         style={{
           display: "flex",
@@ -27,7 +33,11 @@ export default function CorrectionDisclosure({ correction }: CorrectionDisclosur
           cursor: "pointer",
         }}
       >
-        {open ? <CaretDown weight="bold" size={18} /> : <CaretRight weight="bold" size={18} />}
+        {open ? (
+          <CaretDown weight="bold" size={18} />
+        ) : (
+          <CaretRight weight="bold" size={18} />
+        )}
         Native Polish Tip
       </Collapsible.Trigger>
       <Collapsible.Content
@@ -44,7 +54,7 @@ export default function CorrectionDisclosure({ correction }: CorrectionDisclosur
           style={{
             display: "inline-block",
             background: "var(--brand-accent)",
-            color: "var(--brand-accent-text)",
+            color: "var(--ink)",
             borderRadius: "var(--radius-full)",
             padding: "var(--space-1) var(--space-2)",
             fontSize: "0.6875rem",

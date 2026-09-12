@@ -34,7 +34,12 @@ function pickSupportedMimeType(): string | null {
 
 type Ripple = { start: number };
 
-export default function MicButton({ onRecordingComplete, onMicError, disabled, disabledMessage }: MicButtonProps) {
+export default function MicButton({
+  onRecordingComplete,
+  onMicError,
+  disabled,
+  disabledMessage,
+}: MicButtonProps) {
   const [holding, setHolding] = useState(false);
   const [hint, setHint] = useState<"idle" | "listening" | "mistap">("idle");
 
@@ -65,8 +70,12 @@ export default function MicButton({ onRecordingComplete, onMicError, disabled, d
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    micRingColorRef.current = getComputedStyle(canvas).getPropertyValue("--mic-ring").trim();
-    reducedMotionRef.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    micRingColorRef.current = getComputedStyle(canvas)
+      .getPropertyValue("--mic-ring")
+      .trim();
+    reducedMotionRef.current = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = CANVAS_SIZE * dpr;
@@ -92,7 +101,9 @@ export default function MicButton({ onRecordingComplete, onMicError, disabled, d
     if (syntheticRef.current || !analyser || !data) {
       const t = performance.now() / 1000;
       const synthetic =
-        0.25 + 0.2 * Math.abs(Math.sin(t * 2.3)) + (Math.random() < 0.03 ? Math.random() * 0.3 : 0);
+        0.25 +
+        0.2 * Math.abs(Math.sin(t * 2.3)) +
+        (Math.random() < 0.03 ? Math.random() * 0.3 : 0);
       return Math.min(1, synthetic);
     }
     analyser.getByteTimeDomainData(data);
@@ -132,16 +143,22 @@ export default function MicButton({ onRecordingComplete, onMicError, disabled, d
     const t = now / 1000;
 
     if (!reduced && !fadingRef.current) {
-      if (level > RIPPLE_LEVEL_THRESHOLD && now - lastRippleAtRef.current >= RIPPLE_MIN_GAP_MS) {
+      if (
+        level > RIPPLE_LEVEL_THRESHOLD &&
+        now - lastRippleAtRef.current >= RIPPLE_MIN_GAP_MS
+      ) {
         ripplesRef.current.push({ start: now });
         lastRippleAtRef.current = now;
       }
     }
-    ripplesRef.current = ripplesRef.current.filter((r) => now - r.start < RIPPLE_DURATION_MS);
+    ripplesRef.current = ripplesRef.current.filter(
+      (r) => now - r.start < RIPPLE_DURATION_MS,
+    );
     if (!reduced) {
       for (const ripple of ripplesRef.current) {
         const age = (now - ripple.start) / RIPPLE_DURATION_MS;
-        const radius = BASE_RADIUS + 6 + (BASE_RADIUS + 40 - (BASE_RADIUS + 6)) * age;
+        const radius =
+          BASE_RADIUS + 6 + (BASE_RADIUS + 40 - (BASE_RADIUS + 6)) * age;
         ctx.beginPath();
         ctx.arc(cx, cy, radius, 0, Math.PI * 2);
         ctx.strokeStyle = stroke;
@@ -169,7 +186,9 @@ export default function MicButton({ onRecordingComplete, onMicError, disabled, d
         radius = BASE_RADIUS + level * 22;
       } else {
         const wobble =
-          Math.sin(angle * 3 + t * 1.7) + Math.sin(angle * 5 + t * 2.3 + 1) + Math.sin(angle * 2 + t * 1.1 + 2);
+          Math.sin(angle * 3 + t * 1.7) +
+          Math.sin(angle * 5 + t * 2.3 + 1) +
+          Math.sin(angle * 2 + t * 1.1 + 2);
         radius = BASE_RADIUS + wobble * (3 + level * 34) + level * 12;
       }
       const x = cx + Math.cos(angle) * radius;
@@ -286,7 +305,10 @@ export default function MicButton({ onRecordingComplete, onMicError, disabled, d
       if (ctx) ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
       setHint("mistap");
       if (mistapTimerRef.current !== null) clearTimeout(mistapTimerRef.current);
-      mistapTimerRef.current = setTimeout(() => setHint("idle"), MIS_TAP_HINT_MS);
+      mistapTimerRef.current = setTimeout(
+        () => setHint("idle"),
+        MIS_TAP_HINT_MS,
+      );
       return;
     }
 
@@ -298,11 +320,28 @@ export default function MicButton({ onRecordingComplete, onMicError, disabled, d
   }
 
   const hintText =
-    hint === "mistap" ? "Hold longer to talk" : hint === "listening" ? "Listening…" : "Hold to talk";
+    hint === "mistap"
+      ? "Hold longer to talk"
+      : hint === "listening"
+        ? "Listening…"
+        : "Hold to talk";
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--space-2)" }}>
-      <div style={{ position: "relative", width: BUTTON_SIZE, height: BUTTON_SIZE }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: "var(--space-2)",
+      }}
+    >
+      <div
+        style={{
+          position: "relative",
+          width: BUTTON_SIZE,
+          height: BUTTON_SIZE,
+        }}
+      >
         <canvas
           ref={canvasRef}
           aria-hidden="true"
@@ -319,7 +358,7 @@ export default function MicButton({ onRecordingComplete, onMicError, disabled, d
         />
         <button
           type="button"
-          disabled={disabled}
+          aria-disabled={disabled}
           onPointerDown={handlePointerDown}
           onPointerUp={handlePointerUp}
           onPointerLeave={handlePointerUp}
@@ -354,11 +393,20 @@ export default function MicButton({ onRecordingComplete, onMicError, disabled, d
             weight="fill"
             size={38}
             color={disabled ? "var(--text-disabled)" : "var(--text-inverse)"}
-            style={{ transform: holding ? "scale(.9)" : "scale(1)", transition: "transform .18s cubic-bezier(.16,1,.3,1)" }}
+            style={{
+              transform: holding ? "scale(.9)" : "scale(1)",
+              transition: "transform .18s cubic-bezier(.16,1,.3,1)",
+            }}
           />
         </button>
       </div>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.875rem", color: "var(--text-muted)" }}>
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "0.875rem",
+          color: "var(--text-muted)",
+        }}
+      >
         {hintText}
       </span>
       <style jsx>{`
@@ -370,7 +418,9 @@ export default function MicButton({ onRecordingComplete, onMicError, disabled, d
           border: 1px solid var(--mic-ring-track);
           opacity: ${holding ? 0 : 0.6};
           transform: scale(${holding ? 1.15 : 1});
-          transition: opacity .18s cubic-bezier(.16,1,.3,1), transform .18s cubic-bezier(.16,1,.3,1);
+          transition:
+            opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+            transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
           pointer-events: none;
         }
       `}</style>

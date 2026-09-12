@@ -9,7 +9,13 @@ import {
   Plus,
   SpeakerHigh,
 } from "@phosphor-icons/react";
-import type { DisplaySupportMode, HskLevel, SpeakingRate, TranscribeResponse, Turn } from "@/types";
+import type {
+  DisplaySupportMode,
+  HskLevel,
+  SpeakingRate,
+  TranscribeResponse,
+  Turn,
+} from "@/types";
 import { toPinyin } from "@/lib/pinyin";
 import MicButton from "@/components/MicButton";
 import HskPicker from "@/components/HskPicker";
@@ -42,13 +48,19 @@ const ZH_ONLY_CHANGE_EVENT = "zh-only-mode-change";
 // per AI turn (see turnRates below) instead of one app-wide value.
 const SPEAKING_RATES: SpeakingRate[] = [0.75, 1, 1.5];
 
-const MIC_BLOCKED_MESSAGE = "Wait for the bot to finish speaking before recording.";
+const MIC_BLOCKED_MESSAGE =
+  "Wait for the bot to finish speaking before recording.";
 
 // Which lines of an AI turn are shown — a display preference, stored the
 // same way as hsk_level (localStorage, before any DB write path exists).
 const DISPLAY_SUPPORT_STORAGE_KEY = "display_support";
 const DISPLAY_SUPPORT_CHANGE_EVENT = "display-support-change";
-const DISPLAY_SUPPORT_MODES: DisplaySupportMode[] = ["all", "hanzi_pinyin", "hanzi_only", "audio"];
+const DISPLAY_SUPPORT_MODES: DisplaySupportMode[] = [
+  "all",
+  "hanzi_pinyin",
+  "hanzi_only",
+  "audio",
+];
 
 function isDisplaySupportMode(value: string): value is DisplaySupportMode {
   return (DISPLAY_SUPPORT_MODES as string[]).includes(value);
@@ -81,14 +93,18 @@ function persistDisplaySupport(mode: DisplaySupportMode) {
 // (chrome — buttons, labels, icons — stays fixed). Local-only, like hsk_level
 // before the DB write path exists.
 const TEXT_SCALE_STORAGE_KEY = "text_scale";
-const TEXT_SCALES = [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.8, 2] as const;
+const TEXT_SCALES = [
+  0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.8, 2,
+] as const;
 type TextScale = (typeof TEXT_SCALES)[number];
 
 const TEXT_SCALE_CHANGE_EVENT = "text-scale-change";
 
 function readStoredTextScale(): TextScale {
   const raw = Number(localStorage.getItem(TEXT_SCALE_STORAGE_KEY));
-  return (TEXT_SCALES as readonly number[]).includes(raw) ? (raw as TextScale) : 1;
+  return (TEXT_SCALES as readonly number[]).includes(raw)
+    ? (raw as TextScale)
+    : 1;
 }
 
 function getServerTextScale(): TextScale {
@@ -167,7 +183,11 @@ function persistHskLevel(level: HskLevel) {
 function formatTurnTime(ts: number | undefined): string {
   return ts === undefined
     ? ""
-    : new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+    : new Date(ts).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
 }
 
 function errorMessage(data: unknown, status: number): string {
@@ -176,7 +196,13 @@ function errorMessage(data: unknown, status: number): string {
     : `Request failed (${status})`;
 }
 
-function StatusLine({ variant, children }: { variant: "error" | "ok" | "live"; children: React.ReactNode }) {
+function StatusLine({
+  variant,
+  children,
+}: {
+  variant: "error" | "ok" | "live";
+  children: React.ReactNode;
+}) {
   const styles = {
     error: { background: "var(--err-bg)", color: "var(--err-text)" },
     ok: { background: "var(--ok-bg)", color: "var(--ok-text)" },
@@ -213,7 +239,7 @@ export default function Home() {
   const [turnRates, setTurnRates] = useState<Record<number, SpeakingRate>>({});
   // Per-turn "sent at" time, display-only — seeded for the greeting, then
   // appended alongside setHistory in send() below.
-  const [turnTimestamps, setTurnTimestamps] = useState<number[]>(() => [Date.now()]);
+  const [turnTimestamps, setTurnTimestamps] = useState<number[]>([]);
   const textScale = useSyncExternalStore(
     subscribeToTextScale,
     readStoredTextScale,
@@ -251,6 +277,11 @@ export default function Home() {
   useEffect(() => {
     lastTurnRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [history.length]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setTurnTimestamps([Date.now()]), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   async function speak(text: string, index: number) {
     if (playingIndex !== null) return;
@@ -327,7 +358,10 @@ export default function Home() {
     form.append("mode", zhOnlyMode ? "zh" : "auto");
 
     try {
-      const res = await fetch("/api/transcribe", { method: "POST", body: form });
+      const res = await fetch("/api/transcribe", {
+        method: "POST",
+        body: form,
+      });
       const data: unknown = await res.json();
       if (!res.ok) {
         setError(errorMessage(data, res.status));
@@ -352,91 +386,122 @@ export default function Home() {
           padding: "var(--space-4)",
         }}
       >
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "center",
-          gap: "var(--space-3)",
-          rowGap: "var(--space-2)",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1)" }}>
-          {/* eslint-disable-next-line @next/next/no-img-element -- static app-icon asset, not a Next/Image-optimized content image */}
-          <img src="/icon.svg" alt="" width={24} height={24} />
-          <span style={{ fontFamily: "var(--font-serif)", fontSize: "1.375rem", color: "var(--ink)" }}>hao.AI</span>
-        </div>
-        <DisplaySupportToggle mode={displaySupport} onChange={persistDisplaySupport} />
-        <div style={{ display: "flex", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)" }}>
-          <button
-            type="button"
-            onClick={() =>
-              persistTextScale(TEXT_SCALES[Math.max(0, TEXT_SCALES.indexOf(textScale) - 1)])
-            }
-            aria-label="Decrease Chinese text size"
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "var(--ink)",
-              cursor: "pointer",
-              padding: "var(--space-2) var(--space-3)",
-              fontFamily: "var(--font-sans)",
-              fontSize: "0.875rem",
-            }}
-          >
-            A-
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              persistTextScale(
-                TEXT_SCALES[Math.min(TEXT_SCALES.length - 1, TEXT_SCALES.indexOf(textScale) + 1)],
-              )
-            }
-            aria-label="Increase Chinese text size"
-            style={{
-              background: "transparent",
-              border: "none",
-              borderLeft: "1px solid var(--border)",
-              color: "var(--ink)",
-              cursor: "pointer",
-              padding: "var(--space-2) var(--space-3)",
-              fontFamily: "var(--font-sans)",
-              fontSize: "0.875rem",
-            }}
-          >
-            A+
-          </button>
-        </div>
-        <ZhOnlyToggle checked={zhOnlyMode} onChange={persistZhOnlyMode} />
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "center",
-          gap: "var(--space-2)",
-        }}
-      >
-        <HskPicker level={hskLevel} onChange={persistHskLevel} />
-        <button
-          type="button"
-          disabled
-          aria-disabled="true"
-          title="Conversation history (coming soon)"
+        <div
           style={{
-            background: "transparent",
-            border: "none",
-            color: "var(--text-disabled)",
-            cursor: "not-allowed",
-            padding: "var(--space-3)",
-            borderRadius: "var(--radius-sm)",
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: "var(--space-3)",
+            rowGap: "var(--space-2)",
           }}
         >
-          <ClockCounterClockwise weight="bold" size={26} />
-        </button>
-      </div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-1)",
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element -- static app-icon asset, not a Next/Image-optimized content image */}
+            <img src="/icon.svg" alt="" width={24} height={24} />
+            <span
+              style={{
+                fontFamily: "var(--font-serif)",
+                fontSize: "1.375rem",
+                color: "var(--ink)",
+              }}
+            >
+              hao.AI
+            </span>
+          </div>
+          <DisplaySupportToggle
+            mode={displaySupport}
+            onChange={persistDisplaySupport}
+          />
+          <div
+            style={{
+              display: "flex",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-sm)",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() =>
+                persistTextScale(
+                  TEXT_SCALES[Math.max(0, TEXT_SCALES.indexOf(textScale) - 1)],
+                )
+              }
+              aria-label="Decrease Chinese text size"
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--ink)",
+                cursor: "pointer",
+                padding: "var(--space-2) var(--space-3)",
+                fontFamily: "var(--font-sans)",
+                fontSize: "0.875rem",
+              }}
+            >
+              A-
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                persistTextScale(
+                  TEXT_SCALES[
+                    Math.min(
+                      TEXT_SCALES.length - 1,
+                      TEXT_SCALES.indexOf(textScale) + 1,
+                    )
+                  ],
+                )
+              }
+              aria-label="Increase Chinese text size"
+              style={{
+                background: "transparent",
+                border: "none",
+                borderLeft: "1px solid var(--border)",
+                color: "var(--ink)",
+                cursor: "pointer",
+                padding: "var(--space-2) var(--space-3)",
+                fontFamily: "var(--font-sans)",
+                fontSize: "0.875rem",
+              }}
+            >
+              A+
+            </button>
+          </div>
+          <ZhOnlyToggle checked={zhOnlyMode} onChange={persistZhOnlyMode} />
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: "var(--space-2)",
+          }}
+        >
+          <HskPicker level={hskLevel} onChange={persistHskLevel} />
+          <span title="Conversation history (coming soon)">
+            <button
+              type="button"
+              disabled
+              aria-disabled="true"
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--text-disabled)",
+                cursor: "not-allowed",
+                padding: "var(--space-3)",
+                borderRadius: "var(--radius-sm)",
+              }}
+            >
+              <ClockCounterClockwise weight="bold" size={26} />
+            </button>
+          </span>
+        </div>
       </div>
 
       <div
@@ -452,7 +517,11 @@ export default function Home() {
         {history.map((turn, i) => {
           const isLast = i === history.length - 1;
           return (
-            <div key={i} ref={isLast ? lastTurnRef : undefined} className="turn-in">
+            <div
+              key={i}
+              ref={isLast ? lastTurnRef : undefined}
+              className="turn-in"
+            >
               {turn.role === "user" ? (
                 <div style={{ display: "flex", justifyContent: "flex-end" }}>
                   <div
@@ -474,10 +543,24 @@ export default function Home() {
                         marginBottom: "var(--space-1)",
                       }}
                     >
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--text-muted)" }}>
+                      <span
+                        style={{
+                          fontFamily: "var(--font-mono)",
+                          fontSize: "0.8125rem",
+                          color: "var(--text-muted)",
+                        }}
+                      >
                         {formatTurnTime(turnTimestamps[i])}
                       </span>
-                      <span style={{ fontSize: "0.9375rem", fontWeight: 600, color: "var(--text-secondary)" }}>You</span>
+                      <span
+                        style={{
+                          fontSize: "0.9375rem",
+                          fontWeight: 600,
+                          color: "var(--text-secondary)",
+                        }}
+                      >
+                        You
+                      </span>
                     </div>
                     <p
                       style={{
@@ -519,20 +602,30 @@ export default function Home() {
                       marginBottom: "var(--space-4)",
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "var(--space-2)",
+                      }}
+                    >
                       <span
                         style={{
                           width: 22,
                           height: 22,
                           borderRadius: "50%",
-                          background: "var(--brand-accent)",
+                          background: "var(--surface-sunken)",
                           display: "inline-flex",
                           alignItems: "center",
                           justifyContent: "center",
                           flexShrink: 0,
                         }}
                       >
-                        <Info weight="bold" size={14} color="var(--brand-accent-text)" />
+                        <Info
+                          weight="bold"
+                          size={14}
+                          color="var(--text-secondary)"
+                        />
                       </span>
                       <span
                         style={{
@@ -546,22 +639,29 @@ export default function Home() {
                         hao.AI Tutor · {turnRates[i] ?? 1}x
                       </span>
                     </div>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--text-muted)" }}>
+                    <span
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        fontSize: "0.8125rem",
+                        color: "var(--text-muted)",
+                      }}
+                    >
                       {formatTurnTime(turnTimestamps[i])}
                     </span>
                   </div>
 
-                  {displaySupport !== "hanzi_only" && displaySupport !== "audio" && (
-                    <p
-                      style={{
-                        fontFamily: "var(--font-mono)",
-                        color: "var(--text-secondary)",
-                        fontSize: `calc(1.125rem * ${textScale})`,
-                      }}
-                    >
-                      {turn.pinyin}
-                    </p>
-                  )}
+                  {displaySupport !== "hanzi_only" &&
+                    displaySupport !== "audio" && (
+                      <p
+                        style={{
+                          fontFamily: "var(--font-mono)",
+                          color: "var(--text-secondary)",
+                          fontSize: `calc(1.125rem * ${textScale})`,
+                        }}
+                      >
+                        {turn.pinyin}
+                      </p>
+                    )}
                   {displaySupport !== "audio" && (
                     <p
                       style={{
@@ -601,12 +701,14 @@ export default function Home() {
                       type="button"
                       onClick={() => void speak(turn.text_zh, i)}
                       disabled={playingIndex !== null}
+                      aria-label="Play tutor response"
                       title="Play audio"
                       style={{
                         background: "transparent",
                         border: "none",
                         color: "var(--ink)",
-                        cursor: playingIndex !== null ? "not-allowed" : "pointer",
+                        cursor:
+                          playingIndex !== null ? "not-allowed" : "pointer",
                         opacity: playingIndex !== null ? 0.4 : 1,
                         padding: "var(--space-3)",
                       }}
@@ -618,13 +720,19 @@ export default function Home() {
                         <button
                           key={rate}
                           type="button"
-                          onClick={() => setTurnRates((r) => ({ ...r, [i]: rate }))}
+                          onClick={() =>
+                            setTurnRates((r) => ({ ...r, [i]: rate }))
+                          }
                           style={{
-                            background: (turnRates[i] ?? 1) === rate ? "var(--border-strong)" : "var(--surface)",
+                            background:
+                              (turnRates[i] ?? 1) === rate
+                                ? "var(--border-strong)"
+                                : "var(--surface)",
                             border: "1px solid var(--border)",
                             borderRadius: "var(--radius-sm)",
                             color: "var(--ink)",
-                            fontWeight: (turnRates[i] ?? 1) === rate ? 600 : 400,
+                            fontWeight:
+                              (turnRates[i] ?? 1) === rate ? 600 : 400,
                             padding: "var(--space-1) var(--space-2)",
                             fontSize: "0.75rem",
                             fontFamily: "var(--font-mono)",
@@ -654,7 +762,14 @@ export default function Home() {
           gap: "var(--space-2)",
         }}
       >
-        <div style={{ maxWidth: 720, margin: "0 auto", width: "100%", padding: "0 var(--space-4)" }}>
+        <div
+          style={{
+            maxWidth: 720,
+            margin: "0 auto",
+            width: "100%",
+            padding: "0 var(--space-4)",
+          }}
+        >
           {error && <StatusLine variant="error">{error}</StatusLine>}
           {micError && <StatusLine variant="error">{micError}</StatusLine>}
           {speakError && <StatusLine variant="error">{speakError}</StatusLine>}
@@ -673,10 +788,19 @@ export default function Home() {
             gap: "var(--space-3)",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", justifySelf: "start" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-3)",
+              justifySelf: "start",
+            }}
+          >
             <button
               type="button"
-              onClick={() => setInputMode((m) => (m === "talk" ? "type" : "talk"))}
+              onClick={() =>
+                setInputMode((m) => (m === "talk" ? "type" : "talk"))
+              }
               style={{
                 background: "transparent",
                 border: "none",
@@ -685,8 +809,12 @@ export default function Home() {
                 padding: "var(--space-3)",
                 borderRadius: "var(--radius-sm)",
               }}
-              aria-label={inputMode === "talk" ? "Switch to typing" : "Switch to talking"}
-              title={inputMode === "talk" ? "Switch to typing" : "Switch to talking"}
+              aria-label={
+                inputMode === "talk" ? "Switch to typing" : "Switch to talking"
+              }
+              title={
+                inputMode === "talk" ? "Switch to typing" : "Switch to talking"
+              }
             >
               <Keyboard weight="bold" size={24} />
             </button>
@@ -701,7 +829,14 @@ export default function Home() {
                 disabledMessage={MIC_BLOCKED_MESSAGE}
               />
             ) : (
-              <div style={{ display: "flex", gap: "var(--space-2)", width: "100%", maxWidth: 480 }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "var(--space-2)",
+                  width: "100%",
+                  maxWidth: 480,
+                }}
+              >
                 <input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
@@ -742,23 +877,23 @@ export default function Home() {
             )}
           </div>
 
-          <button
-            type="button"
-            disabled
-            aria-disabled="true"
-            title="Attach (coming soon)"
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "var(--text-disabled)",
-              cursor: "not-allowed",
-              padding: "var(--space-3)",
-              borderRadius: "var(--radius-sm)",
-              justifySelf: "end",
-            }}
-          >
-            <Plus weight="bold" size={24} />
-          </button>
+          <span title="Attach (coming soon)" style={{ justifySelf: "end" }}>
+            <button
+              type="button"
+              disabled
+              aria-disabled="true"
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--text-disabled)",
+                cursor: "not-allowed",
+                padding: "var(--space-3)",
+                borderRadius: "var(--radius-sm)",
+              }}
+            >
+              <Plus weight="bold" size={24} />
+            </button>
+          </span>
         </div>
       </div>
 
