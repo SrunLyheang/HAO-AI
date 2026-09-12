@@ -22,6 +22,7 @@ import HskPicker from "@/components/HskPicker";
 import CorrectionDisclosure from "@/components/CorrectionDisclosure";
 import ZhOnlyToggle from "@/components/ZhOnlyToggle";
 import DisplaySupportToggle from "@/components/DisplaySupportToggle";
+import { createPersistedPreference } from "@/components/preference-store";
 
 // Hardcoded opening turn so first paint needs no server call. Unit 7 seeds the
 // greeting server-side instead.
@@ -34,15 +35,6 @@ const GREETING: Turn = {
   correctionPinyin: "",
 };
 
-const HSK_LEVEL_STORAGE_KEY = "hsk_level";
-const HSK_LEVEL_CHANGE_EVENT = "hsk-level-change";
-
-// Default off: mic transcribes literally in whatever language was spoken.
-// On: forces the Whisper language hint to "zh", which makes spoken English
-// come back translated into Chinese (see lib/groq-stt.ts).
-const ZH_ONLY_STORAGE_KEY = "zh_only_mode";
-const ZH_ONLY_CHANGE_EVENT = "zh-only-mode-change";
-
 // Matches the current live-app rate options (see the ElevenLabs-speed-limit
 // note in lib/elevenlabs-tts.ts) — restyled here, not widened. Now selected
 // per AI turn (see turnRates below) instead of one app-wide value.
@@ -51,10 +43,35 @@ const SPEAKING_RATES: SpeakingRate[] = [0.75, 1, 1.5];
 const MIC_BLOCKED_MESSAGE =
   "Wait for the bot to finish speaking before recording.";
 
+// Server render always sees each fallback; the real value (an external
+// system, localStorage) is synced in via useSyncExternalStore below — no
+// setState-in-effect, no hydration mismatch. See components/preference-store.
+
+function isHskLevel(n: number): n is HskLevel {
+  return Number.isInteger(n) && n >= 1 && n <= 6;
+}
+
+const hskLevelPreference = createPersistedPreference<HskLevel>({
+  storageKey: "hsk_level",
+  changeEvent: "hsk-level-change",
+  fallback: 3,
+  isValid: (raw) => isHskLevel(Number(raw)),
+  parse: (raw) => Number(raw) as HskLevel,
+});
+
+// Default off: mic transcribes literally in whatever language was spoken.
+// On: forces the Whisper language hint to "zh", which makes spoken English
+// come back translated into Chinese (see lib/groq-stt.ts).
+const zhOnlyModePreference = createPersistedPreference<boolean>({
+  storageKey: "zh_only_mode",
+  changeEvent: "zh-only-mode-change",
+  fallback: false,
+  isValid: () => true,
+  parse: (raw) => raw === "true",
+});
+
 // Which lines of an AI turn are shown — a display preference, stored the
 // same way as hsk_level (localStorage, before any DB write path exists).
-const DISPLAY_SUPPORT_STORAGE_KEY = "display_support";
-const DISPLAY_SUPPORT_CHANGE_EVENT = "display-support-change";
 const DISPLAY_SUPPORT_MODES: DisplaySupportMode[] = [
   "all",
   "hanzi_pinyin",
@@ -66,116 +83,29 @@ function isDisplaySupportMode(value: string): value is DisplaySupportMode {
   return (DISPLAY_SUPPORT_MODES as string[]).includes(value);
 }
 
-function readStoredDisplaySupport(): DisplaySupportMode {
-  const raw = localStorage.getItem(DISPLAY_SUPPORT_STORAGE_KEY);
-  return raw !== null && isDisplaySupportMode(raw) ? raw : "all";
-}
-
-function getServerDisplaySupport(): DisplaySupportMode {
-  return "all";
-}
-
-function subscribeToDisplaySupport(callback: () => void) {
-  window.addEventListener(DISPLAY_SUPPORT_CHANGE_EVENT, callback);
-  window.addEventListener("storage", callback);
-  return () => {
-    window.removeEventListener(DISPLAY_SUPPORT_CHANGE_EVENT, callback);
-    window.removeEventListener("storage", callback);
-  };
-}
-
-function persistDisplaySupport(mode: DisplaySupportMode) {
-  localStorage.setItem(DISPLAY_SUPPORT_STORAGE_KEY, mode);
-  window.dispatchEvent(new Event(DISPLAY_SUPPORT_CHANGE_EVENT));
-}
+const displaySupportPreference = createPersistedPreference<DisplaySupportMode>({
+  storageKey: "display_support",
+  changeEvent: "display-support-change",
+  fallback: "all",
+  isValid: isDisplaySupportMode,
+  parse: (raw) => raw as DisplaySupportMode,
+});
 
 // User-adjustable size for the transcript's Chinese/pinyin/English text only
 // (chrome — buttons, labels, icons — stays fixed). Local-only, like hsk_level
 // before the DB write path exists.
-const TEXT_SCALE_STORAGE_KEY = "text_scale";
 const TEXT_SCALES = [
   0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.8, 2,
 ] as const;
 type TextScale = (typeof TEXT_SCALES)[number];
 
-const TEXT_SCALE_CHANGE_EVENT = "text-scale-change";
-
-function readStoredTextScale(): TextScale {
-  const raw = Number(localStorage.getItem(TEXT_SCALE_STORAGE_KEY));
-  return (TEXT_SCALES as readonly number[]).includes(raw)
-    ? (raw as TextScale)
-    : 1;
-}
-
-function getServerTextScale(): TextScale {
-  return 1;
-}
-
-function subscribeToTextScale(callback: () => void) {
-  window.addEventListener(TEXT_SCALE_CHANGE_EVENT, callback);
-  window.addEventListener("storage", callback);
-  return () => {
-    window.removeEventListener(TEXT_SCALE_CHANGE_EVENT, callback);
-    window.removeEventListener("storage", callback);
-  };
-}
-
-function persistTextScale(scale: TextScale) {
-  localStorage.setItem(TEXT_SCALE_STORAGE_KEY, String(scale));
-  window.dispatchEvent(new Event(TEXT_SCALE_CHANGE_EVENT));
-}
-
-function isHskLevel(n: number): n is HskLevel {
-  return Number.isInteger(n) && n >= 1 && n <= 6;
-}
-
-function readStoredHskLevel(): HskLevel {
-  const level = Number(localStorage.getItem(HSK_LEVEL_STORAGE_KEY));
-  return isHskLevel(level) ? level : 3;
-}
-
-function readStoredZhOnlyMode(): boolean {
-  return localStorage.getItem(ZH_ONLY_STORAGE_KEY) === "true";
-}
-
-function getServerZhOnlyMode(): boolean {
-  return false;
-}
-
-function subscribeToZhOnlyMode(callback: () => void) {
-  window.addEventListener(ZH_ONLY_CHANGE_EVENT, callback);
-  window.addEventListener("storage", callback);
-  return () => {
-    window.removeEventListener(ZH_ONLY_CHANGE_EVENT, callback);
-    window.removeEventListener("storage", callback);
-  };
-}
-
-function persistZhOnlyMode(next: boolean) {
-  localStorage.setItem(ZH_ONLY_STORAGE_KEY, String(next));
-  window.dispatchEvent(new Event(ZH_ONLY_CHANGE_EVENT));
-}
-
-// Server render always sees the default; the real value (an external system,
-// localStorage) is synced in via useSyncExternalStore below — no
-// setState-in-effect, no hydration mismatch.
-function getServerHskLevel(): HskLevel {
-  return 3;
-}
-
-function subscribeToHskLevel(callback: () => void) {
-  window.addEventListener(HSK_LEVEL_CHANGE_EVENT, callback);
-  window.addEventListener("storage", callback);
-  return () => {
-    window.removeEventListener(HSK_LEVEL_CHANGE_EVENT, callback);
-    window.removeEventListener("storage", callback);
-  };
-}
-
-function persistHskLevel(level: HskLevel) {
-  localStorage.setItem(HSK_LEVEL_STORAGE_KEY, String(level));
-  window.dispatchEvent(new Event(HSK_LEVEL_CHANGE_EVENT));
-}
+const textScalePreference = createPersistedPreference<TextScale>({
+  storageKey: "text_scale",
+  changeEvent: "text-scale-change",
+  fallback: 1,
+  isValid: (raw) => (TEXT_SCALES as readonly number[]).includes(Number(raw)),
+  parse: (raw) => Number(raw) as TextScale,
+});
 
 // Per-turn "sent at" time, display-only (mirrors the mockup's timestamps).
 // Client-only, like turnRates — not part of the Turn shape or any API
@@ -230,9 +160,9 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [micError, setMicError] = useState<string | null>(null);
   const zhOnlyMode = useSyncExternalStore(
-    subscribeToZhOnlyMode,
-    readStoredZhOnlyMode,
-    getServerZhOnlyMode,
+    zhOnlyModePreference.subscribe,
+    zhOnlyModePreference.read,
+    zhOnlyModePreference.getServer,
   );
   // Per-AI-turn playback speed (index -> rate), default 1x. Replaces the old
   // single app-wide rate switcher (see progress-tracker.md).
@@ -241,21 +171,21 @@ export default function Home() {
   // appended alongside setHistory in send() below.
   const [turnTimestamps, setTurnTimestamps] = useState<number[]>([]);
   const textScale = useSyncExternalStore(
-    subscribeToTextScale,
-    readStoredTextScale,
-    getServerTextScale,
+    textScalePreference.subscribe,
+    textScalePreference.read,
+    textScalePreference.getServer,
   );
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const [speakError, setSpeakError] = useState<string | null>(null);
   const hskLevel = useSyncExternalStore(
-    subscribeToHskLevel,
-    readStoredHskLevel,
-    getServerHskLevel,
+    hskLevelPreference.subscribe,
+    hskLevelPreference.read,
+    hskLevelPreference.getServer,
   );
   const displaySupport = useSyncExternalStore(
-    subscribeToDisplaySupport,
-    readStoredDisplaySupport,
-    getServerDisplaySupport,
+    displaySupportPreference.subscribe,
+    displaySupportPreference.read,
+    displaySupportPreference.getServer,
   );
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -416,7 +346,7 @@ export default function Home() {
           </div>
           <DisplaySupportToggle
             mode={displaySupport}
-            onChange={persistDisplaySupport}
+            onChange={displaySupportPreference.persist}
           />
           <div
             style={{
@@ -428,7 +358,7 @@ export default function Home() {
             <button
               type="button"
               onClick={() =>
-                persistTextScale(
+                textScalePreference.persist(
                   TEXT_SCALES[Math.max(0, TEXT_SCALES.indexOf(textScale) - 1)],
                 )
               }
@@ -448,7 +378,7 @@ export default function Home() {
             <button
               type="button"
               onClick={() =>
-                persistTextScale(
+                textScalePreference.persist(
                   TEXT_SCALES[
                     Math.min(
                       TEXT_SCALES.length - 1,
@@ -472,7 +402,10 @@ export default function Home() {
               A+
             </button>
           </div>
-          <ZhOnlyToggle checked={zhOnlyMode} onChange={persistZhOnlyMode} />
+          <ZhOnlyToggle
+            checked={zhOnlyMode}
+            onChange={zhOnlyModePreference.persist}
+          />
         </div>
 
         <div
@@ -483,7 +416,7 @@ export default function Home() {
             gap: "var(--space-2)",
           }}
         >
-          <HskPicker level={hskLevel} onChange={persistHskLevel} />
+          <HskPicker level={hskLevel} onChange={hskLevelPreference.persist} />
           <span title="Conversation history (coming soon)">
             <button
               type="button"
