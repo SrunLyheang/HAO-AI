@@ -3,26 +3,18 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   ClockCounterClockwise,
-  Info,
   Keyboard,
   PaperPlaneTilt,
   Plus,
-  SpeakerHigh,
 } from "@phosphor-icons/react";
-import type {
-  DisplaySupportMode,
-  HskLevel,
-  SpeakingRate,
-  TranscribeResponse,
-  Turn,
-} from "@/types";
-import { toPinyin } from "@/lib/pinyin";
+import type { DisplaySupportMode, HskLevel, SpeakingRate, Turn } from "@/types";
 import MicButton from "@/components/MicButton";
 import HskPicker from "@/components/HskPicker";
-import CorrectionDisclosure from "@/components/CorrectionDisclosure";
 import ZhOnlyToggle from "@/components/ZhOnlyToggle";
 import DisplaySupportToggle from "@/components/DisplaySupportToggle";
+import TurnCard from "@/components/TurnCard";
 import { createPersistedPreference } from "@/components/preference-store";
+import * as conversation from "@/components/conversation-client";
 
 // Hardcoded opening turn so first paint needs no server call. Unit 7 seeds the
 // greeting server-side instead.
@@ -120,12 +112,6 @@ function formatTurnTime(ts: number | undefined): string {
       });
 }
 
-function errorMessage(data: unknown, status: number): string {
-  return typeof data === "object" && data !== null && "error" in data
-    ? String((data as { error: unknown }).error)
-    : `Request failed (${status})`;
-}
-
 function StatusLine({
   variant,
   children,
@@ -218,29 +204,20 @@ export default function Home() {
     setPlayingIndex(index);
     setSpeakError(null);
 
-    try {
-      const res = await fetch("/api/speak", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        // No `rate` — ElevenLabs' speed is hard-limited to 0.7-1.2, too
-        // narrow for this app's rate range, so the server always synthesizes
-        // at natural speed and playbackRate scales it here.
-        body: JSON.stringify({ text }),
-      });
-      if (!res.ok) {
-        const data: unknown = await res.json();
-        setSpeakError(errorMessage(data, res.status));
-        setPlayingIndex(null);
-        return;
-      }
+    const result = await conversation.speak(text);
+    if (!result.ok) {
+      setSpeakError(result.error);
+      setPlayingIndex(null);
+      return;
+    }
 
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const audio = audioRef.current;
-      if (!audio) return;
-      if (audio.src) URL.revokeObjectURL(audio.src);
-      audio.src = url;
-      audio.playbackRate = turnRates[index] ?? 1;
+    const url = URL.createObjectURL(result.data);
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.src) URL.revokeObjectURL(audio.src);
+    audio.src = url;
+    audio.playbackRate = turnRates[index] ?? 1;
+    try {
       await audio.play();
     } catch {
       setSpeakError("Could not play audio — try again.");
@@ -260,47 +237,27 @@ export default function Home() {
     setError(null);
     setPending(true);
 
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        // Send history *before* this user turn; message carries the new turn.
-        body: JSON.stringify({ history, message, hskLevel }),
-      });
-      const data: unknown = await res.json();
-      if (!res.ok) {
-        setError(errorMessage(data, res.status));
-        return;
-      }
-      setHistory([...nextHistory, data as Turn]);
+    const result = await conversation.reply(history, message, hskLevel);
+    if (!result.ok) {
+      setError(result.error);
+    } else {
+      setHistory([...nextHistory, result.data]);
       setTurnTimestamps((t) => [...t, Date.now()]);
-      void speak((data as Turn).text_zh, nextHistory.length);
-    } catch {
-      setError("Network error — try again.");
-    } finally {
-      setPending(false);
+      void speak(result.data.text_zh, nextHistory.length);
     }
+    setPending(false);
   }
 
   async function handleRecordedAudio(blob: Blob) {
-    const form = new FormData();
-    form.append("audio", blob);
-    form.append("mode", zhOnlyMode ? "zh" : "auto");
-
-    try {
-      const res = await fetch("/api/transcribe", {
-        method: "POST",
-        body: form,
-      });
-      const data: unknown = await res.json();
-      if (!res.ok) {
-        setError(errorMessage(data, res.status));
-        return;
-      }
-      await send((data as TranscribeResponse).text);
-    } catch {
-      setError("Network error — try again.");
+    const result = await conversation.transcribe(
+      blob,
+      zhOnlyMode ? "zh" : "auto",
+    );
+    if (!result.ok) {
+      setError(result.error);
+      return;
     }
+    await send(result.data.text);
   }
 
   return (
@@ -450,237 +407,21 @@ export default function Home() {
         {history.map((turn, i) => {
           const isLast = i === history.length - 1;
           return (
-            <div
+            <TurnCard
               key={i}
               ref={isLast ? lastTurnRef : undefined}
-              className="turn-in"
-            >
-              {turn.role === "user" ? (
-                <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                  <div
-                    style={{
-                      maxWidth: "85%",
-                      background: "var(--surface-sunken)",
-                      border: "1px solid var(--border-strong)",
-                      borderRadius: "var(--radius-lg)",
-                      padding: "var(--space-4) var(--space-6)",
-                      boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "flex-end",
-                        alignItems: "baseline",
-                        gap: "var(--space-2)",
-                        marginBottom: "var(--space-1)",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontFamily: "var(--font-mono)",
-                          fontSize: "0.8125rem",
-                          color: "var(--text-muted)",
-                        }}
-                      >
-                        {formatTurnTime(turnTimestamps[i])}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: "0.9375rem",
-                          fontWeight: 600,
-                          color: "var(--text-secondary)",
-                        }}
-                      >
-                        You
-                      </span>
-                    </div>
-                    <p
-                      style={{
-                        fontFamily: "var(--font-sans)",
-                        color: "var(--text-secondary)",
-                        fontSize: `calc(0.9375rem * ${textScale})`,
-                        textAlign: "right",
-                      }}
-                    >
-                      {toPinyin(turn.text_zh)}
-                    </p>
-                    <p
-                      style={{
-                        fontFamily: "var(--font-sans)",
-                        color: "var(--ink)",
-                        fontSize: `calc(1.25rem * ${textScale})`,
-                        textAlign: "right",
-                      }}
-                    >
-                      {turn.text_zh}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div
-                  style={{
-                    background: "var(--surface)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--radius-lg)",
-                    padding: "var(--space-6)",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      marginBottom: "var(--space-4)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "var(--space-2)",
-                      }}
-                    >
-                      <span
-                        style={{
-                          width: 22,
-                          height: 22,
-                          borderRadius: "50%",
-                          background: "var(--surface-sunken)",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          flexShrink: 0,
-                        }}
-                      >
-                        <Info
-                          weight="bold"
-                          size={14}
-                          color="var(--text-secondary)"
-                        />
-                      </span>
-                      <span
-                        style={{
-                          fontSize: "0.8125rem",
-                          fontWeight: 600,
-                          color: "var(--text-secondary)",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.05em",
-                        }}
-                      >
-                        hao.AI Tutor · {turnRates[i] ?? 1}x
-                      </span>
-                    </div>
-                    <span
-                      style={{
-                        fontFamily: "var(--font-mono)",
-                        fontSize: "0.8125rem",
-                        color: "var(--text-muted)",
-                      }}
-                    >
-                      {formatTurnTime(turnTimestamps[i])}
-                    </span>
-                  </div>
-
-                  {displaySupport !== "hanzi_only" &&
-                    displaySupport !== "audio" && (
-                      <p
-                        style={{
-                          fontFamily: "var(--font-mono)",
-                          color: "var(--text-secondary)",
-                          fontSize: `calc(1.125rem * ${textScale})`,
-                        }}
-                      >
-                        {turn.pinyin}
-                      </p>
-                    )}
-                  {displaySupport !== "audio" && (
-                    <p
-                      style={{
-                        fontFamily: "var(--font-serif)",
-                        color: "var(--ink)",
-                        fontSize: `calc(clamp(2.25rem, 6vw, 3.25rem) * ${textScale})`,
-                        lineHeight: 1.15,
-                        letterSpacing: "-0.02em",
-                      }}
-                    >
-                      {turn.text_zh}
-                    </p>
-                  )}
-                  {displaySupport === "all" && (
-                    <p
-                      style={{
-                        color: "var(--text)",
-                        fontSize: `calc(1.25rem * ${textScale})`,
-                        marginTop: "var(--space-2)",
-                      }}
-                    >
-                      {turn.text_en}
-                    </p>
-                  )}
-
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "var(--space-3)",
-                      marginTop: "var(--space-4)",
-                      paddingTop: "var(--space-4)",
-                      borderTop: "1px solid var(--border)",
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => void speak(turn.text_zh, i)}
-                      disabled={playingIndex !== null}
-                      aria-label="Play tutor response"
-                      title="Play audio"
-                      style={{
-                        background: "transparent",
-                        border: "none",
-                        color: "var(--ink)",
-                        cursor:
-                          playingIndex !== null ? "not-allowed" : "pointer",
-                        opacity: playingIndex !== null ? 0.4 : 1,
-                        padding: "var(--space-3)",
-                      }}
-                    >
-                      <SpeakerHigh weight="bold" size={26} />
-                    </button>
-                    <div style={{ display: "flex", gap: "var(--space-1)" }}>
-                      {SPEAKING_RATES.map((rate) => (
-                        <button
-                          key={rate}
-                          type="button"
-                          onClick={() =>
-                            setTurnRates((r) => ({ ...r, [i]: rate }))
-                          }
-                          style={{
-                            background:
-                              (turnRates[i] ?? 1) === rate
-                                ? "var(--border-strong)"
-                                : "var(--surface)",
-                            border: "1px solid var(--border)",
-                            borderRadius: "var(--radius-sm)",
-                            color: "var(--ink)",
-                            fontWeight:
-                              (turnRates[i] ?? 1) === rate ? 600 : 400,
-                            padding: "var(--space-1) var(--space-2)",
-                            fontSize: "0.75rem",
-                            fontFamily: "var(--font-mono)",
-                            cursor: "pointer",
-                          }}
-                        >
-                          {rate}x
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <CorrectionDisclosure correction={turn.correction} />
-                </div>
-              )}
-            </div>
+              turn={turn}
+              time={formatTurnTime(turnTimestamps[i])}
+              textScale={textScale}
+              displaySupport={displaySupport}
+              rate={turnRates[i] ?? 1}
+              speakingRates={SPEAKING_RATES}
+              onPlay={() => void speak(turn.text_zh, i)}
+              onRateChange={(rate: SpeakingRate) =>
+                setTurnRates((r) => ({ ...r, [i]: rate }))
+              }
+              playbackDisabled={playingIndex !== null}
+            />
           );
         })}
       </div>
