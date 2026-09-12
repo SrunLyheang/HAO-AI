@@ -320,6 +320,7 @@ export default function Home() {
                 )
               }
               aria-label="Decrease Chinese text size"
+              title="Decrease Chinese text size"
               style={{
                 background: "transparent",
                 border: "none",
@@ -345,6 +346,7 @@ export default function Home() {
                 )
               }
               aria-label="Increase Chinese text size"
+              title="Increase Chinese text size"
               style={{
                 background: "transparent",
                 border: "none",
