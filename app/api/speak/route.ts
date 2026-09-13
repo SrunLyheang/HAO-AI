@@ -1,8 +1,18 @@
 import { NextResponse } from "next/server";
 import { synthesizeSpeech } from "@/lib/elevenlabs-tts";
+import { AuthError, requireUser } from "@/lib/auth";
 import { parseSpeakRequest } from "./validate";
 
 export async function POST(req: Request) {
+  try {
+    await requireUser();
+  } catch (e) {
+    if (e instanceof AuthError) {
+      return NextResponse.json({ error: e.message }, { status: e.status });
+    }
+    throw e;
+  }
+
   let body: unknown;
   try {
     body = await req.json();

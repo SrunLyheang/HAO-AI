@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { callDeepSeek, type ChatMessage } from "@/lib/deepseek";
 import { toPinyin } from "@/lib/pinyin";
+import { AuthError, requireUser } from "@/lib/auth";
 import type { AiTurn, HskLevel, Turn } from "@/types";
 import { parseChatRequest, parseChatResponse } from "./validate";
 import { buildSystemPrompt } from "./prompt";
@@ -22,6 +23,15 @@ function toChatMessages(history: Turn[], message: string, hskLevel: HskLevel): C
 }
 
 export async function POST(req: Request) {
+  try {
+    await requireUser();
+  } catch (e) {
+    if (e instanceof AuthError) {
+      return NextResponse.json({ error: e.message }, { status: e.status });
+    }
+    throw e;
+  }
+
   let body: unknown;
   try {
     body = await req.json();

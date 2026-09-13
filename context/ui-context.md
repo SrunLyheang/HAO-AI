@@ -447,9 +447,29 @@ no navbar, no footer, no other pages.
 
 ### Sign-in
 
-Clerk's `<SignIn>` centered on `--canvas`, `max-width: 400px`, no
-custom chrome. Sign-up is open — anyone can create an account; there
-is no allowlist or "no access" state after signing in.
+Two-panel shell (`components/auth/AuthShell.tsx`), `--surface` card,
+`1px solid var(--border)`, `--radius-lg`, `max-width: 960px`, centered
+on `--canvas`. Left panel (hidden below `768px`): a decorative
+animated backdrop plus the `app/icon.svg` mark and `hao.AI` serif
+wordmark, centered. Right panel: a serif heading, a sans subheading,
+then Clerk's `<SignIn>` (`components/auth/clerk-appearance.ts` strips
+Clerk's own card chrome/header and maps its `variables` to hao.AI's
+own tokens). Sign-up is open — anyone can create an account; there is
+no allowlist or "no access" state after signing in.
+
+**Narrow exception (2026-09-14), scoped to `/sign-in` only:** the left
+panel's backdrop uses blurred, drifting gradient blobs
+(`--brand-accent`, `--mic-ring`, `filter: blur()`) and a CSS-only
+sparkle-particle layer — otherwise-banned decoration (`Banned` list:
+"no gradients, neon, glassmorphism"), approved by the user as a
+deliberate one-screen exception, mirroring how the mic ring is "the
+one deliberately expressive element" elsewhere. Both animations
+respect `prefers-reduced-motion: reduce` (drop to a static backdrop).
+Colors are drawn from tokens that already exist (`--brand-accent`,
+`--mic-ring`) — no new hex values were introduced. The `0 2px 8px`
+shadow ceiling, previously limited to the History panel/level dialog/
+turn cards, extends to the auth shell card. Do not spread this
+treatment to the conversation screen without a fresh decision.
 
 ## Iconography
 
