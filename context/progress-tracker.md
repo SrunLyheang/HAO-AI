@@ -5,12 +5,12 @@ change.
 
 ## Current Phase
 
-- Unit 6 (Clerk auth) — implemented per
-  `context/feature-spec/unit-6-auth-clerk.md`, pending `npm install`/build/
-  lint/test verification and manual browser check. Unit 5 (one-screen
-  restyle + Siri mic) still pending its own manual browser verification with
-  a real mic/DeepSeek/ElevenLabs round trip. Units 2/3/4 still pending their
-  own manual verification and commits (unchanged from before Unit 5).
+- Unit 6 (Clerk auth) — **verified done** (2026-09-14, re-verification pass):
+  see "Verified" below. Starting Unit 7 (persistence), part 7a. Unit 5
+  (one-screen restyle + Siri mic) still pending its own dedicated manual
+  browser verification with a real mic/DeepSeek/ElevenLabs round trip
+  (unchanged). Units 2/3/4 still pending their own manual verification and
+  commits (unchanged from before Unit 5).
 
 ## Current Goal
 
@@ -919,6 +919,32 @@ route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → 
 
 ## Verified
 
+- 2026-09-14: **Unit 6 re-verified before starting Unit 7.** Re-ran the full
+  checklist against the `auth` branch as it stands today (all prior Unit 6
+  follow-up fixes already committed, working tree otherwise clean except an
+  unrelated pre-existing edit to `unit-7a-db-schema-setup.md`'s heading).
+  `npm install` (up to date), `npm run build` (clean, route table lists `/`
+  as `ƒ` dynamic plus `/sign-in/[[...sign-in]]` and `/sign-up/[[...sign-up]]`),
+  `npm run lint` (0 errors/warnings), `npm test` (89 passed, including
+  `test/auth-guard.test.ts`'s three 401 cases) all green. Read the actual code
+  against `unit-6-auth-clerk.md`'s done criteria and confirmed each: `/` is
+  an async Server Component calling `auth()`/`redirectToSignIn()` (superseding
+  the spec's original "no split needed" text, per the 2026-09-14 third-
+  follow-up entry above); `middleware.ts` is a bare `clerkMiddleware()`
+  (matcher-only, no `createRouteMatcher`); `lib/auth.ts` exports
+  `requireUser`/`AuthError` unchanged from the spec; all three of
+  `app/api/{chat,transcribe,speak}/route.ts` call `requireUser()` as their
+  first statement with the identical try/catch shape; `.env.example` has the
+  Clerk vars including the sign-in/sign-up/redirect URL overrides added by
+  later follow-ups; `grep -R CLERK_SECRET_KEY app components` finds nothing;
+  no `allowlist` reference remains anywhere in the codebase. No manual
+  browser session was run in this pass — not re-needed, since the extensive
+  `browse`-verified checks already recorded above (fresh sign-up, sign-in
+  redirect to the app's own `/sign-in` not Clerk's hosted portal, no redirect
+  loop, footer/theming fix, HMR-loop fix) already exercised this exact code
+  path live. Unit 6's done criteria (`unit-6-auth-clerk.md`) are all met; no
+  code changes were needed. Already fully committed (no new commit required
+  for Unit 6 itself — the working tree had nothing of Unit 6's to commit).
 - 2026-09-11: Unit 1 done-criteria met — user confirmed the live browser check
   ("good pass") after setting a real `DEEPSEEK_API_KEY` in `.env.local`: typed
   conversation holds, AI turns render Chinese + pinyin + English, correction
@@ -948,12 +974,8 @@ route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → 
   `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` (see "In Progress").
 - Unit 5: the one screen + Siri mic — implemented; manual browser verification
   and commit still pending (see "In Progress").
-- Unit 6: auth (Clerk) — implemented per
-  `context/feature-spec/unit-6-auth-clerk.md`; `npm run build`/`lint`/`test`
-  all green (see "Completed" above). Sign-up is open (no allowlist) per the
-  2026-09-11 decision below. Manual browser verification and commit still
-  pending — needs real Clerk keys in `.env.local` and public sign-up
-  confirmed on in the Clerk dashboard first (see "Completed" note).
+- Unit 6: auth (Clerk) — **DONE, re-verified 2026-09-14** (see "Verified").
+  Sign-up is open (no allowlist) per the 2026-09-11 decision below.
 - Unit 7 (persistence): spec drafted (2026-09-14), split into three parts —
   `context/feature-spec/unit-7a-db-schema-setup.md`,
   `unit-7b-settings-persistence.md`, `unit-7c-conversation-persistence.md`.
