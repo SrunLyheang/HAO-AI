@@ -6,13 +6,14 @@ change.
 ## Current Phase
 
 - Unit 6 (Clerk auth) — **verified done** (2026-09-14, re-verification pass):
-  see "Verified" below. Unit 7a (DB schema + Neon/Drizzle setup) — **done**:
-  `DATABASE_URL` supplied, `drizzle-kit migrate` applied cleanly against the
-  real Neon database. Starting Unit 7b (settings persistence) next. Unit 5
-  (one-screen restyle + Siri mic) still pending its own dedicated manual
-  browser verification with a real mic/DeepSeek/ElevenLabs round trip
-  (unchanged). Units 2/3/4 still pending their own manual verification and
-  commits (unchanged from before Unit 5).
+  see "Verified" below. Unit 7a (DB schema + Neon/Drizzle setup) — **done**.
+  Unit 7b (settings persistence) — **done**: HSK level now lives in Postgres
+  via `/api/settings`, `localStorage` fallback removed. Starting Unit 7c
+  (conversation/turn persistence) next. Unit 5 (one-screen restyle + Siri
+  mic) still pending its own dedicated manual browser verification with a
+  real mic/DeepSeek/ElevenLabs round trip (unchanged). Units 2/3/4 still
+  pending their own manual verification and commits (unchanged from before
+  Unit 5).
 
 ## Current Goal
 
@@ -953,6 +954,30 @@ route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → 
   placeholder — corrected to `DATABASE_URL=` before committing; confirmed
   the real value does not appear anywhere else in the tree.
   Committed at `<see git log>`.
+- 2026-09-14: **Unit 7b (settings persistence) implemented and verified.**
+  Per `unit-7b-settings-persistence.md`: new `db/queries.ts` with
+  `getSettings`/`upsertHskLevel`, both scoped by `userId`; new `types/index.ts`
+  `Settings` type; new `app/api/settings/route.ts` (`GET`/`PATCH`,
+  `requireUser()` first, `isValidHskLevel` reused from `lib/hsk.ts`);
+  `components/ConversationScreen.tsx`'s `hskLevel` now loaded via
+  `GET /api/settings` on mount and written via `PATCH /api/settings` on
+  change — the old `localStorage`-backed `hskLevelPreference` and its
+  `isHskLevel` helper are removed; `HskPicker`'s own props/behavior
+  unchanged. `zh_only_mode`/`display_support`/`text_scale` remain
+  `localStorage`-only, per spec. Added `test/settings-route.test.ts`
+  (authenticated GET/PATCH behavior, 400 on invalid/missing `hskLevel`),
+  `test/queries-settings.test.ts` (mocks `@/db/index`'s `db`; default-3
+  fallback, row value, exact-`userId` scoping), and two auth-guard cases in
+  `test/auth-guard.test.ts` (401 before any DB call). `npm run build`,
+  `npm run lint`, `npm test` (98/98) all pass; manual `curl` against
+  `npm run dev` confirms both routes return 401 unauthenticated (no browser
+  session available in this environment to verify the full persist-across-
+  reload path — flagged as still needing a real manual check). `grep -R
+  DATABASE_URL app components` finds nothing. `architecture.md` (`settings`
+  row now omits `speaking_rate`; added `app/api/settings/` boundary row;
+  marked the `localStorage` HSK fallback row removed) and `code-standards.md`
+  (added `app/api/settings/` to File Organization) updated in the same
+  change per `ai-workflow-rules.md` §6.2. Committed at `<see git log>`.
 - 2026-09-14: **Unit 6 re-verified before starting Unit 7.** Re-ran the full
   checklist against the `auth` branch as it stands today (all prior Unit 6
   follow-up fixes already committed, working tree otherwise clean except an
@@ -1013,13 +1038,12 @@ route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → 
 - Unit 7 (persistence): spec drafted (2026-09-14), split into three parts —
   `context/feature-spec/unit-7a-db-schema-setup.md`,
   `unit-7b-settings-persistence.md`, `unit-7c-conversation-persistence.md`.
-  **7a: schema/client/config code implemented and building clean, but
-  BLOCKED on a missing `DATABASE_URL` (no Neon project created yet) — the
-  migration has not been applied. 7b and 7c not started, per 7a's own "do
-  the migration first" ordering.** See "Verified" above for exactly what's
-  done and what's needed to resume. 7c's "Decisions made" section explicitly
-  defers `app/api/conversations/`, the History panel, and "New conversation"
-  to Unit 8.
+  **7a: done** (migration applied to the real Neon database). **7b: done**
+  (HSK level persisted via `/api/settings`, `localStorage` fallback
+  removed). **7c not started** — see "Verified" above for exactly what's
+  done. 7c's "Decisions made" section explicitly defers
+  `app/api/conversations/`, the History panel, and "New conversation" to
+  Unit 8.
 - Unit 8 (history overlay + conversation lifecycle): spec drafted
   (2026-09-14) at
   `context/feature-spec/unit-8-history-conversation-lifecycle.md`, then

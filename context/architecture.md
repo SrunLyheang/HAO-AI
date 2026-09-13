@@ -31,6 +31,7 @@
 | `app/api/transcribe/` | Receiving an audio clip, enforcing audio size/duration caps server-side, calling Groq STT, returning transcript text. | LLM calls, TTS calls, persistence. |
 | `app/api/chat/` | Building the system prompt, calling DeepSeek, parsing/validating its JSON, generating pinyin via `lib/pinyin`, persisting the turn pair, enforcing the 25-turn cap. (Above-level-word flagging was implemented then removed for inaccuracy — see progress-tracker.md.) | Audio handling, TTS calls. |
 | `app/api/speak/` | Calling ElevenLabs TTS with the given text, returning audio bytes. No `rate` field — speaking rate is applied client-side via `HTMLAudioElement.playbackRate`. | LLM calls, persistence, transcript logic. |
+| `app/api/settings/` | Reading and writing the user's HSK level setting. No provider calls. | LLM calls, TTS calls, transcript/turn logic. |
 | `app/api/conversations/` | Listing conversations, loading one transcript, creating a new conversation (with seeded opening turn), archiving the current one, pruning past 50. | Provider calls. |
 | `components/` | All React UI (transcript, turn, correction disclosure, mic button, HSK picker, history panel, rate toggle, error/loading states). Client Components only where interactivity requires it. | Any secret, any direct provider call, any DB access. |
 | `lib/` | Server-only modules: `deepseek.ts`, `groq-stt.ts`, `elevenlabs-tts.ts`, `pinyin.ts`, `hsk.ts` (loads and slices the word lists), `ratelimit.ts`, `auth.ts` (wraps Clerk's `auth()`). Each provider module is the only place its key is read. | React components, JSX, client-imported code. |
@@ -47,7 +48,7 @@
 
 | Table | Columns | Notes |
 |-------|---------|-------|
-| `settings` | `user_id` (PK, text, Clerk ID), `hsk_level` (int 1–6), `speaking_rate` (`0.75 \| 1 \| 1.5`), `updated_at` (timestamptz) | One row per user. Not yet built (Unit 7); values match the live client-side rate switch (`SpeakingRate` in `types/index.ts`), not the original slow/normal design. |
+| `settings` | `user_id` (PK, text, Clerk ID), `hsk_level` (int 1–6), `updated_at` (timestamptz) | One row per user. Built in Unit 7a/7b. No `speaking_rate` column — the per-message rate control (`turnRates` client-only React state) replaced the single app-wide rate toggle before this table was built, so there is no per-user rate to persist. |
 | `conversations` | `id` (PK, uuid), `user_id` (text, not null, indexed), `status` (`'active' \| 'archived'`), `created_at` (timestamptz) | At most one `active` row per user. |
 | `turns` | `id` (PK, uuid), `conversation_id` (fk, not null), `user_id` (text, not null), `role` (`'user' \| 'ai'`), `text_zh` (text), `pinyin` (text, null for user turns until transcribed), `text_en` (text, null for user turns), `correction` (text, nullable), `correction_pinyin` (text, nullable), `created_at` (timestamptz) | Ordered by `created_at`. Max 25 per conversation. No `above_level_words` column — that feature was removed before shipping (see progress-tracker.md). |
 | `usage_log` | `id` (PK, uuid), `user_id` (text, not null, indexed), `route` (text), `created_at` (timestamptz, indexed) | Append-only. Rows older than 24h may be deleted by an opportunistic cleanup on write. |
@@ -65,7 +66,7 @@ There is no object store. User audio recordings are never written anywhere; they
 | Prompt cache | DeepSeek (provider-side, automatic) | The stable system-prompt prefix containing the HSK word list | Managed by DeepSeek; the app guarantees a byte-identical prefix so hits occur. |
 | Transcript state | Browser memory (React state) | The current conversation's turns | Page lifetime; authoritative copy is in Postgres. |
 | TTS object URL | Browser memory (`URL.createObjectURL`) | One AI turn's audio | Revoked after playback; recreated on replay. |
-| HSK setting fallback | `localStorage` | `hsk_level` only, before the DB write path exists (build Unit 2), removed at Unit 7 | Non-authoritative; DB wins once available. |
+| HSK setting fallback | ~~`localStorage`~~ | Removed at Unit 7b — `hsk_level` is now read/written through `/api/settings`, backed by Postgres. | — |
 
 ## Auth and access model
 

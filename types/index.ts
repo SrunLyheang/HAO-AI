@@ -38,3 +38,6 @@ export type AiTurn = Extract<Turn, { role: "ai" }>;
 
 /** The /api/transcribe success shape. */
 export type TranscribeResponse = { text: string };
+
+/** The /api/settings request/response shape (Unit 7b). */
+export type Settings = { hskLevel: HskLevel };

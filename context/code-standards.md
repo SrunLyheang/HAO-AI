@@ -77,6 +77,7 @@ Implementation rules for hao.AI. These bind all code in the repo. They sit under
 - `app/api/transcribe/` — the only caller of the Groq STT client (`lib/groq-stt.ts`).
 - `app/api/chat/` — the only caller of the DeepSeek client; also runs pinyin generation, turn persistence, and the 25-turn cap. (Above-level flagging was implemented then removed for inaccuracy — see progress-tracker.md.)
 - `app/api/speak/` — the only caller of the ElevenLabs TTS client (`lib/elevenlabs-tts.ts`); takes text only, no rate (applied client-side).
+- `app/api/settings/` — reads/writes the user's HSK level (`GET`/`PATCH`). No provider calls.
 - `app/api/conversations/` — history list, single-conversation load, new-conversation creation, archive. No provider calls.
 - `components/` — presentational and interactive UI. No secrets, no provider SDKs, no direct DB access. Server data arrives as props.
 - `lib/` — server-only modules, one concern each: `deepseek.ts`, `groq-stt.ts`, `elevenlabs-tts.ts`, `pinyin.ts`, `hsk.ts`, `ratelimit.ts`, `auth.ts`. Never imported by a client component.

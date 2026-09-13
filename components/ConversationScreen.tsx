@@ -40,18 +40,6 @@ const MIC_BLOCKED_MESSAGE =
 // system, localStorage) is synced in via useSyncExternalStore below — no
 // setState-in-effect, no hydration mismatch. See components/preference-store.
 
-function isHskLevel(n: number): n is HskLevel {
-  return Number.isInteger(n) && n >= 1 && n <= 6;
-}
-
-const hskLevelPreference = createPersistedPreference<HskLevel>({
-  storageKey: "hsk_level",
-  changeEvent: "hsk-level-change",
-  fallback: 3,
-  isValid: (raw) => isHskLevel(Number(raw)),
-  parse: (raw) => Number(raw) as HskLevel,
-});
-
 // Default off: mic transcribes literally in whatever language was spoken.
 // On: forces the Whisper language hint to "zh", which makes spoken English
 // come back translated into Chinese (see lib/groq-stt.ts).
@@ -164,11 +152,31 @@ export default function ConversationScreen() {
   );
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const [speakError, setSpeakError] = useState<string | null>(null);
-  const hskLevel = useSyncExternalStore(
-    hskLevelPreference.subscribe,
-    hskLevelPreference.read,
-    hskLevelPreference.getServer,
-  );
+  // Loaded from Postgres via /api/settings (Unit 7b) — 3 is the same
+  // default getSettings() returns for a brand-new user, so there is no
+  // visible flash once the fetch resolves.
+  const [hskLevel, setHskLevel] = useState<HskLevel>(3);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((data: { hskLevel: HskLevel }) => {
+        if (!cancelled) setHskLevel(data.hskLevel);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function changeHskLevel(level: HskLevel) {
+    setHskLevel(level);
+    void fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hskLevel: level }),
+    });
+  }
   const displaySupport = useSyncExternalStore(
     displaySupportPreference.subscribe,
     displaySupportPreference.read,
@@ -386,7 +394,7 @@ export default function ConversationScreen() {
             gap: "var(--space-2)",
           }}
         >
-          <HskPicker level={hskLevel} onChange={hskLevelPreference.persist} />
+          <HskPicker level={hskLevel} onChange={changeHskLevel} />
           <span title="Conversation history (coming soon)">
             <button
               type="button"
