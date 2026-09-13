@@ -6,7 +6,9 @@ change.
 ## Current Phase
 
 - Unit 6 (Clerk auth) — **verified done** (2026-09-14, re-verification pass):
-  see "Verified" below. Starting Unit 7 (persistence), part 7a. Unit 5
+  see "Verified" below. Unit 7a (DB schema + Neon/Drizzle setup) — **done**:
+  `DATABASE_URL` supplied, `drizzle-kit migrate` applied cleanly against the
+  real Neon database. Starting Unit 7b (settings persistence) next. Unit 5
   (one-screen restyle + Siri mic) still pending its own dedicated manual
   browser verification with a real mic/DeepSeek/ElevenLabs round trip
   (unchanged). Units 2/3/4 still pending their own manual verification and
@@ -919,6 +921,38 @@ route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → 
 
 ## Verified
 
+- 2026-09-14: **Unit 7a implemented up to the point blocked by a missing
+  credential.** Per `unit-7a-db-schema-setup.md`, added `drizzle-orm`,
+  `@neondatabase/serverless` (runtime) and `drizzle-kit` (dev dep); new
+  `db/schema.ts` (`settings`/`conversations`/`turns`, matching the spec
+  exactly — no `speaking_rate` column, no `usage_log` table); new
+  `db/index.ts` (`neon-http` driver, `process.env.DATABASE_URL!` — the one
+  accepted non-null assertion per `code-standards.md`); new
+  `drizzle.config.ts`; `.env.example` gained `DATABASE_URL` under a new
+  "Unit 7a" section. Removed the placeholder `db/README.md` and
+  `drizzle/README.md` stubs now that those folders hold real files.
+  `npx drizzle-kit generate` was run (it only diffs the schema, no live DB
+  connection needed) and produced `drizzle/0000_high_zzzax.sql` — reviewed,
+  matches the schema column-for-column with no manual edits needed
+  (done-criterion #2). `npm run build`, `npm run lint`, and `npx tsc
+  --noEmit` all pass clean with the new `db/` layer present but unused by
+  any route/component (done-criterion #4); `npm test` still 89/89.
+  `grep -R DATABASE_URL app components` finds nothing (done-criterion #5).
+  **Resumed and completed 2026-09-14:** `DATABASE_URL` was added to
+  `.env.local` (a Neon pooled connection string). `npx drizzle-kit generate`
+  re-run first to confirm zero schema drift ("No schema changes, nothing to
+  migrate"), then `npx drizzle-kit migrate` applied both
+  `drizzle/0000_high_zzzax.sql` and `drizzle/0001_married_alex_wilder.sql`
+  (the latter — cascade delete on `turns.conversation_id` and the
+  `conversations_one_active_per_user` partial unique index — was added
+  outside this session and reviewed as a real improvement over the original
+  spec) cleanly against the real Neon database. `npm run build` and
+  `npm run lint` both pass. All done-criteria for 7a are now met.
+  **Also fixed in this pass:** `.env.example` had accidentally picked up a
+  real Neon connection string as its example value instead of a blank
+  placeholder — corrected to `DATABASE_URL=` before committing; confirmed
+  the real value does not appear anywhere else in the tree.
+  Committed at `<see git log>`.
 - 2026-09-14: **Unit 6 re-verified before starting Unit 7.** Re-ran the full
   checklist against the `auth` branch as it stands today (all prior Unit 6
   follow-up fixes already committed, working tree otherwise clean except an
@@ -979,9 +1013,13 @@ route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → 
 - Unit 7 (persistence): spec drafted (2026-09-14), split into three parts —
   `context/feature-spec/unit-7a-db-schema-setup.md`,
   `unit-7b-settings-persistence.md`, `unit-7c-conversation-persistence.md`.
-  Not yet implemented. 7c's "Decisions made" section explicitly defers
-  `app/api/conversations/`, the History panel, and "New conversation" to
-  Unit 8.
+  **7a: schema/client/config code implemented and building clean, but
+  BLOCKED on a missing `DATABASE_URL` (no Neon project created yet) — the
+  migration has not been applied. 7b and 7c not started, per 7a's own "do
+  the migration first" ordering.** See "Verified" above for exactly what's
+  done and what's needed to resume. 7c's "Decisions made" section explicitly
+  defers `app/api/conversations/`, the History panel, and "New conversation"
+  to Unit 8.
 - Unit 8 (history overlay + conversation lifecycle): spec drafted
   (2026-09-14) at
   `context/feature-spec/unit-8-history-conversation-lifecycle.md`, then

@@ -187,8 +187,18 @@ export default function ConversationScreen() {
       setPlayingIndex(null);
       setMicError((m) => (m === MIC_BLOCKED_MESSAGE ? null : m));
     };
+    const onError = () => {
+      if (audio.src) URL.revokeObjectURL(audio.src);
+      setPlayingIndex(null);
+      setMicError((m) => (m === MIC_BLOCKED_MESSAGE ? null : m));
+      setSpeakError("Audio playback failed — try again.");
+    };
     audio.addEventListener("ended", onEnded);
-    return () => audio.removeEventListener("ended", onEnded);
+    audio.addEventListener("error", onError);
+    return () => {
+      audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("error", onError);
+    };
   }, []);
 
   useEffect(() => {
