@@ -2,12 +2,14 @@ import { NextResponse } from "next/server";
 import { callDeepSeek, type ChatMessage } from "@/lib/deepseek";
 import { toPinyin } from "@/lib/pinyin";
 import { AuthError, requireUser } from "@/lib/auth";
-import type { AiTurn, HskLevel, Turn } from "@/types";
+import { appendTurnPair, countTurns } from "@/db/queries";
+import type { HskLevel, Turn } from "@/types";
 import { parseChatRequest, parseChatResponse } from "./validate";
 import { buildSystemPrompt } from "./prompt";
 
 const MAX_MESSAGE_CHARS = 500;
 const MAX_HISTORY_TURNS = 50;
+const MAX_TURNS_PER_CONVERSATION = 25;
 
 function toChatMessages(history: Turn[], message: string, hskLevel: HskLevel): ChatMessage[] {
   return [
@@ -23,8 +25,9 @@ function toChatMessages(history: Turn[], message: string, hskLevel: HskLevel): C
 }
 
 export async function POST(req: Request) {
+  let userId: string;
   try {
-    await requireUser();
+    userId = await requireUser();
   } catch (e) {
     if (e instanceof AuthError) {
       return NextResponse.json({ error: e.message }, { status: e.status });
@@ -51,6 +54,11 @@ export async function POST(req: Request) {
   }
   if (parsed.history.length > MAX_HISTORY_TURNS) {
     return NextResponse.json({ error: "Conversation too long" }, { status: 400 });
+  }
+
+  const existingTurns = await countTurns(userId, parsed.conversationId);
+  if (existingTurns >= MAX_TURNS_PER_CONVERSATION) {
+    return NextResponse.json({ error: "Conversation is full" }, { status: 400 });
   }
 
   const messages = toChatMessages(parsed.history, parsed.message, parsed.hskLevel);
@@ -81,13 +89,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Bad model response" }, { status: 502 });
   }
 
-  const turn: AiTurn = {
-    role: "ai",
-    text_zh: reply.reply_zh,
-    pinyin: toPinyin(reply.reply_zh),
-    text_en: reply.reply_en,
-    correction: reply.correction,
-    correctionPinyin: reply.correction === "" ? "" : toPinyin(reply.correction),
-  };
-  return NextResponse.json(turn);
+  const aiTurn = await appendTurnPair(
+    userId,
+    parsed.conversationId,
+    { text_zh: parsed.message },
+    {
+      text_zh: reply.reply_zh,
+      pinyin: toPinyin(reply.reply_zh),
+      text_en: reply.reply_en,
+      correction: reply.correction,
+      correctionPinyin: reply.correction === "" ? "" : toPinyin(reply.correction),
+    },
+  );
+  return NextResponse.json(aiTurn);
 }

@@ -49,11 +49,16 @@
 | Table | Columns | Notes |
 |-------|---------|-------|
 | `settings` | `user_id` (PK, text, Clerk ID), `hsk_level` (int 1–6), `updated_at` (timestamptz) | One row per user. Built in Unit 7a/7b. No `speaking_rate` column — the per-message rate control (`turnRates` client-only React state) replaced the single app-wide rate toggle before this table was built, so there is no per-user rate to persist. |
-| `conversations` | `id` (PK, uuid), `user_id` (text, not null, indexed), `status` (`'active' \| 'archived'`), `created_at` (timestamptz) | At most one `active` row per user. |
+| `conversations` | `id` (PK, uuid), `user_id` (text, not null), `status` (`'active' \| 'archived'`), `created_at` (timestamptz) | Partial unique index `conversations_one_active_per_user` on `user_id` where `status = 'active'` — enforces invariant 12 at the DB level, not just by caller discipline. |
 | `turns` | `id` (PK, uuid), `conversation_id` (fk, not null), `user_id` (text, not null), `role` (`'user' \| 'ai'`), `text_zh` (text), `pinyin` (text, null for user turns until transcribed), `text_en` (text, null for user turns), `correction` (text, nullable), `correction_pinyin` (text, nullable), `created_at` (timestamptz) | Ordered by `created_at`. Max 25 per conversation. No `above_level_words` column — that feature was removed before shipping (see progress-tracker.md). |
 | `usage_log` | `id` (PK, uuid), `user_id` (text, not null, indexed), `route` (text), `created_at` (timestamptz, indexed) | Append-only. Rows older than 24h may be deleted by an opportunistic cleanup on write. |
 
 Dates are stored as `timestamptz` and serialized to the client as ISO 8601 UTC strings.
+
+The `neon-http` driver (see "Provider inventory") has no interactive
+(`BEGIN`/`COMMIT`-across-round-trips) transactions — every write below that
+must be atomic ("in the same transaction", invariants 9/10/12) runs through
+Drizzle's `db.batch([...])`, which Neon executes as one atomic HTTP call.
 
 ### File / blob storage — none
 

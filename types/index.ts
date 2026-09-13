@@ -1,6 +1,6 @@
 // Shared types. See context/architecture.md ("types/").
-// Unit 1 introduces ChatResponse and Turn (partial). Widened in later units:
-// - Unit 7 adds persistence fields (id, created_at, conversation_id)
+// Unit 1 introduced ChatResponse and Turn (partial); Unit 7c widened Turn
+// with persistence fields (id, createdAt) and added Conversation.
 
 /** The model's structured reply, validated at the /api/chat boundary. */
 export type ChatResponse = {
@@ -22,19 +22,26 @@ export type SpeakingRate = 0.75 | 1 | 1.5;
 // DISPLAY_SUPPORT_STORAGE_KEY, stored the same way as hsk_level.
 export type DisplaySupportMode = "all" | "hanzi_pinyin" | "hanzi_only" | "audio";
 
-/** One transcript entry as rendered by the UI. */
+/** One transcript entry as rendered by the UI. Persisted since Unit 7c —
+ * `id`/`createdAt` come from the DB row (createdAt as an ISO 8601 UTC
+ * string on the wire, per code-standards.md's date-handling rule). */
 export type Turn =
-  | { role: "user"; text_zh: string }
+  | { id: string; role: "user"; text_zh: string; createdAt: string }
   | {
+      id: string;
       role: "ai";
       text_zh: string;
       pinyin: string; // computed by pinyin-pro, never model-supplied
       text_en: string;
       correction: string;
       correctionPinyin: string; // computed by pinyin-pro, "" when correction is ""
+      createdAt: string;
     };
 
 export type AiTurn = Extract<Turn, { role: "ai" }>;
+
+/** A conversation row (Unit 7c). */
+export type Conversation = { id: string; status: "active" | "archived"; createdAt: string };
 
 /** The /api/transcribe success shape. */
 export type TranscribeResponse = { text: string };

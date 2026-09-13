@@ -8,7 +8,7 @@ import {
   Plus,
 } from "@phosphor-icons/react";
 import { UserButton } from "@clerk/nextjs";
-import type { DisplaySupportMode, HskLevel, SpeakingRate, Turn } from "@/types";
+import type { Conversation, DisplaySupportMode, HskLevel, SpeakingRate, Turn } from "@/types";
 import MicButton from "@/components/MicButton";
 import HskPicker from "@/components/HskPicker";
 import ZhOnlyToggle from "@/components/ZhOnlyToggle";
@@ -16,17 +16,6 @@ import DisplaySupportToggle from "@/components/DisplaySupportToggle";
 import TurnCard from "@/components/TurnCard";
 import { createPersistedPreference } from "@/components/preference-store";
 import * as conversation from "@/components/conversation-client";
-
-// Hardcoded opening turn so first paint needs no server call. Unit 7 seeds the
-// greeting server-side instead.
-const GREETING: Turn = {
-  role: "ai",
-  text_zh: "你好！今天想聊什么？",
-  pinyin: "nǐ hǎo！jīn tiān xiǎng liáo shén me？",
-  text_en: "Hi! What would you like to talk about today?",
-  correction: "",
-  correctionPinyin: "",
-};
 
 // Matches the current live-app rate options (see the ElevenLabs-speed-limit
 // note in lib/elevenlabs-tts.ts) — restyled here, not widened. Now selected
@@ -127,8 +116,16 @@ function StatusLine({
   );
 }
 
-export default function ConversationScreen() {
-  const [history, setHistory] = useState<Turn[]>([GREETING]);
+type ConversationScreenProps = {
+  conversation: Conversation;
+  initialTurns: Turn[];
+};
+
+export default function ConversationScreen({
+  conversation: activeConversation,
+  initialTurns,
+}: ConversationScreenProps) {
+  const [history, setHistory] = useState<Turn[]>(initialTurns);
   const [input, setInput] = useState("");
   const [inputMode, setInputMode] = useState<"talk" | "type">("talk");
   const [pending, setPending] = useState(false);
@@ -248,7 +245,15 @@ export default function ConversationScreen() {
     message = message.trim();
     if (!message || pending) return;
 
-    const userTurn: Turn = { role: "user", text_zh: message };
+    // Optimistic — the server assigns the real id/createdAt on persistence
+    // (appendTurnPair); this client-side placeholder is only ever rendered,
+    // never sent back to the server.
+    const userTurn: Turn = {
+      id: crypto.randomUUID(),
+      role: "user",
+      text_zh: message,
+      createdAt: new Date().toISOString(),
+    };
     const nextHistory = [...history, userTurn];
     setHistory(nextHistory);
     setTurnTimestamps((t) => [...t, Date.now()]);
@@ -256,7 +261,7 @@ export default function ConversationScreen() {
     setError(null);
     setPending(true);
 
-    const result = await conversation.reply(history, message, hskLevel);
+    const result = await conversation.reply(history, message, hskLevel, activeConversation.id);
     if (!result.ok) {
       setError(result.error);
     } else {

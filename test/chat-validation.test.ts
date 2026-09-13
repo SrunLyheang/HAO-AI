@@ -71,51 +71,90 @@ describe("parseChatResponse", () => {
   });
 });
 
+const CONVERSATION_ID = "11111111-1111-1111-1111-111111111111";
+
 describe("parseChatRequest", () => {
   it("accepts a valid request at hskLevel 1 (boundary)", () => {
-    expect(parseChatRequest({ history: [], message: "你好", hskLevel: 1 })).toEqual({
+    expect(
+      parseChatRequest({ history: [], message: "你好", hskLevel: 1, conversationId: CONVERSATION_ID }),
+    ).toEqual({
       history: [],
       message: "你好",
       hskLevel: 1,
+      conversationId: CONVERSATION_ID,
     });
   });
 
   it("accepts a valid request at hskLevel 6 (boundary)", () => {
-    expect(parseChatRequest({ history: [], message: "你好", hskLevel: 6 })).toEqual({
+    expect(
+      parseChatRequest({ history: [], message: "你好", hskLevel: 6, conversationId: CONVERSATION_ID }),
+    ).toEqual({
       history: [],
       message: "你好",
       hskLevel: 6,
+      conversationId: CONVERSATION_ID,
     });
   });
 
   it("rejects a missing hskLevel", () => {
-    expect(parseChatRequest({ history: [], message: "你好" })).toBeNull();
+    expect(
+      parseChatRequest({ history: [], message: "你好", conversationId: CONVERSATION_ID }),
+    ).toBeNull();
   });
 
   it.each([0, 7, 3.5, "3"])("rejects hskLevel %p", (hskLevel) => {
-    expect(parseChatRequest({ history: [], message: "你好", hskLevel })).toBeNull();
+    expect(
+      parseChatRequest({ history: [], message: "你好", hskLevel, conversationId: CONVERSATION_ID }),
+    ).toBeNull();
   });
 
   it("rejects missing message (regression)", () => {
-    expect(parseChatRequest({ history: [], hskLevel: 3 })).toBeNull();
+    expect(
+      parseChatRequest({ history: [], hskLevel: 3, conversationId: CONVERSATION_ID }),
+    ).toBeNull();
   });
 
   it("rejects non-array history (regression)", () => {
-    expect(parseChatRequest({ history: "nope", message: "你好", hskLevel: 3 })).toBeNull();
+    expect(
+      parseChatRequest({
+        history: "nope",
+        message: "你好",
+        hskLevel: 3,
+        conversationId: CONVERSATION_ID,
+      }),
+    ).toBeNull();
   });
 
   it("rejects a malformed history turn (regression)", () => {
     expect(
-      parseChatRequest({ history: [{ role: "bogus", text_zh: "x" }], message: "你好", hskLevel: 3 }),
+      parseChatRequest({
+        history: [{ role: "bogus", text_zh: "x" }],
+        message: "你好",
+        hskLevel: 3,
+        conversationId: CONVERSATION_ID,
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects a missing conversationId", () => {
+    expect(parseChatRequest({ history: [], message: "你好", hskLevel: 3 })).toBeNull();
+  });
+
+  it.each(["not-a-uuid", "", 123, null])("rejects a malformed conversationId %p", (conversationId) => {
+    expect(
+      parseChatRequest({ history: [], message: "你好", hskLevel: 3, conversationId }),
     ).toBeNull();
   });
 
   it("accepts a non-empty history (regression)", () => {
     const history = [{ role: "user" as const, text_zh: "你好" }];
-    expect(parseChatRequest({ history, message: "再见", hskLevel: 3 })).toEqual({
+    expect(
+      parseChatRequest({ history, message: "再见", hskLevel: 3, conversationId: CONVERSATION_ID }),
+    ).toEqual({
       history,
       message: "再见",
       hskLevel: 3,
+      conversationId: CONVERSATION_ID,
     });
   });
 });

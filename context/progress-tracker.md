@@ -6,14 +6,16 @@ change.
 ## Current Phase
 
 - Unit 6 (Clerk auth) — **verified done** (2026-09-14, re-verification pass):
-  see "Verified" below. Unit 7a (DB schema + Neon/Drizzle setup) — **done**.
-  Unit 7b (settings persistence) — **done**: HSK level now lives in Postgres
-  via `/api/settings`, `localStorage` fallback removed. Starting Unit 7c
-  (conversation/turn persistence) next. Unit 5 (one-screen restyle + Siri
-  mic) still pending its own dedicated manual browser verification with a
-  real mic/DeepSeek/ElevenLabs round trip (unchanged). Units 2/3/4 still
-  pending their own manual verification and commits (unchanged from before
-  Unit 5).
+  see "Verified" below. Unit 7 (persistence) is now fully done: 7a (schema),
+  7b (settings), and 7c (conversation/turn persistence, greeting seeded
+  server-side, 25-turn and 50-conversation caps) all implemented and
+  passing build/lint/test. **Still needed: a real signed-in browser check**
+  (reload mid-conversation, cross-profile check) — not possible from this
+  environment; see "Verified" below for what automated coverage already
+  confirms. Unit 5 (one-screen restyle + Siri mic) still pending its own
+  dedicated manual browser verification with a real mic/DeepSeek/ElevenLabs
+  round trip (unchanged). Units 2/3/4 still pending their own manual
+  verification and commits (unchanged from before Unit 5).
 
 ## Current Goal
 
@@ -978,6 +980,46 @@ route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → 
   marked the `localStorage` HSK fallback row removed) and `code-standards.md`
   (added `app/api/settings/` to File Organization) updated in the same
   change per `ai-workflow-rules.md` §6.2. Committed at `<see git log>`.
+- 2026-09-14: **Unit 7c (conversation + turn persistence) implemented and
+  verified.** Per `unit-7c-conversation-persistence.md`: `db/queries.ts`
+  gained `getOrCreateActiveConversation`, `createConversationWithGreeting`
+  (private), `appendTurnPair`, `countTurns`. The `neon-http` driver has no
+  interactive transactions, so the "one active conversation" archive +
+  insert + greeting-seed + oldest-delete steps run through `db.batch([...])`
+  instead of `db.transaction()` — one atomic Neon HTTP call, same guarantee
+  (documented in `architecture.md`). `types/index.ts` widened `Turn`
+  (`id`/`createdAt`) and added `Conversation`. `app/page.tsx` now calls
+  `getOrCreateActiveConversation(userId)` and passes
+  `{conversation, initialTurns}` to `ConversationScreen`, which the
+  Server/Client split from Unit 6's own earlier work already made
+  straightforward — the hardcoded `GREETING` constant is gone, replaced by
+  the DB-seeded greeting (identical text). `app/api/chat/route.ts` now
+  checks `countTurns` against the real stored count before calling DeepSeek
+  (25-cap enforced against real data, not just in-memory history length)
+  and persists both turns via `appendTurnPair`, returning the persisted AI
+  turn (real `id`/`createdAt`) instead of a freshly-constructed one.
+  `app/api/chat/validate.ts`'s `parseChatRequest` now requires and
+  UUID-validates `conversationId`. `app/api/conversations/` and the History
+  panel remain out of scope (Unit 8), per the spec's Decision #1.
+  Added `test/queries-conversations.test.ts` (existing-vs-create paths, the
+  51st-conversation-deletes-the-oldest cap exercised at the query level per
+  Decision #2, `userId` scoping on every insert, `countTurns` at 0/1/25) and
+  `test/chat-conversation.test.ts` (25-turn-cap rejection before any
+  DeepSeek call, successful persistence call shape, missing/malformed
+  `conversationId` → 400). `test/chat-validation.test.ts` updated for the
+  now-required `conversationId`. `npx tsc --noEmit`, `npm run build`,
+  `npm run lint` all clean; `npm test` 114/114. `curl` against `npm run dev`
+  confirms `GET /` redirects unauthenticated and `POST /api/chat` returns
+  401 with no crash from the new server-side `getOrCreateActiveConversation`
+  call path. **Not verified: the full signed-in manual walkthrough** (reload
+  mid-conversation keeps the transcript; the same active conversation shows
+  in a second browser profile signed in as the same user) — no browser
+  session available in this environment; flagged as outstanding. `grep -R
+  DATABASE_URL app components` finds nothing. `architecture.md` updated:
+  `conversations` row's stale plain index corrected to name the real
+  partial unique index, and a new note explaining the `db.batch()`
+  transaction mechanism added under "Storage model". Committed at
+  `<see git log>`.
 - 2026-09-14: **Unit 6 re-verified before starting Unit 7.** Re-ran the full
   checklist against the `auth` branch as it stands today (all prior Unit 6
   follow-up fixes already committed, working tree otherwise clean except an
@@ -1038,12 +1080,12 @@ route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → 
 - Unit 7 (persistence): spec drafted (2026-09-14), split into three parts —
   `context/feature-spec/unit-7a-db-schema-setup.md`,
   `unit-7b-settings-persistence.md`, `unit-7c-conversation-persistence.md`.
-  **7a: done** (migration applied to the real Neon database). **7b: done**
-  (HSK level persisted via `/api/settings`, `localStorage` fallback
-  removed). **7c not started** — see "Verified" above for exactly what's
-  done. 7c's "Decisions made" section explicitly defers
-  `app/api/conversations/`, the History panel, and "New conversation" to
-  Unit 8.
+  **7a, 7b, and 7c all done** — schema migrated, HSK level persisted via
+  `/api/settings`, conversation/turn persistence with the greeting seeded
+  server-side and the 25-turn/50-conversation caps enforced. Still needs a
+  real signed-in browser check (see "Verified" above). 7c's "Decisions made"
+  section explicitly defers `app/api/conversations/`, the History panel,
+  and "New conversation" to Unit 8.
 - Unit 8 (history overlay + conversation lifecycle): spec drafted
   (2026-09-14) at
   `context/feature-spec/unit-8-history-conversation-lifecycle.md`, then
