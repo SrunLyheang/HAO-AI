@@ -26,3 +26,138 @@ body {
   color: var(--text);
   font-family: var(--font-sans);
 }
+
+/* ---- Sign-in screen decoration (narrow exception, 2026-09-14) ----
+   Restricted to /sign-in only — see ui-context.md's "Sign-in" section and
+   code-standards.md's Styling section for the scope of this exception. */
+.auth-aurora-blob {
+  position: absolute;
+  border-radius: var(--radius-full);
+  filter: blur(64px);
+  opacity: 0.45;
+  will-change: transform;
+}
+.auth-aurora-blob-1 {
+  top: -12%;
+  left: -12%;
+  width: 60%;
+  height: 60%;
+  background: var(--brand-accent);
+  animation: auth-aurora-drift-1 22s ease-in-out infinite;
+}
+.auth-aurora-blob-2 {
+  right: -14%;
+  bottom: -16%;
+  width: 65%;
+  height: 65%;
+  background: var(--mic-ring);
+  animation: auth-aurora-drift-2 28s ease-in-out infinite;
+}
+@keyframes auth-aurora-drift-1 {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(6%, 4%, 0) scale(1.1);
+  }
+}
+@keyframes auth-aurora-drift-2 {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1.05);
+  }
+  50% {
+    transform: translate3d(-5%, -6%, 0) scale(0.95);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-aurora-blob {
+    animation: none;
+  }
+}
+
+.auth-sparkle-layer {
+  position: absolute;
+  inset: -320px 0;
+  background-repeat: repeat;
+}
+.auth-sparkle-layer-a {
+  background-image:
+    radial-gradient(1.6px 1.6px at 24px 32px, var(--mic-ring), transparent 60%),
+    radial-gradient(1.4px 1.4px at 132px 88px, var(--brand-accent), transparent 60%),
+    radial-gradient(2px 2px at 210px 168px, var(--surface), transparent 60%);
+  background-size: 260px 300px;
+  opacity: 0.6;
+  animation:
+    auth-sparkle-rise-a 18s linear infinite,
+    auth-sparkle-twinkle 4s ease-in-out infinite;
+}
+.auth-sparkle-layer-b {
+  background-image:
+    radial-gradient(1.4px 1.4px at 60px 40px, var(--brand-accent), transparent 60%),
+    radial-gradient(1.8px 1.8px at 240px 120px, var(--surface), transparent 60%);
+  background-size: 380px 420px;
+  opacity: 0.4;
+  animation:
+    auth-sparkle-rise-b 27s linear infinite,
+    auth-sparkle-twinkle 5.5s ease-in-out infinite;
+}
+@keyframes auth-sparkle-rise-a {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(0, -300px, 0);
+  }
+}
+@keyframes auth-sparkle-rise-b {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(0, -420px, 0);
+  }
+}
+@keyframes auth-sparkle-twinkle {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-sparkle-layer {
+    animation: none;
+  }
+}
+
+.auth-shell-grid {
+  grid-template-columns: 1fr;
+}
+.auth-brand-panel {
+  display: none;
+}
+@media (min-width: 768px) {
+  .auth-shell-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .auth-brand-panel {
+    display: flex;
+  }
+}
+
+.auth-clerk-fluid {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+.auth-clerk-card {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+.auth-clerk-header {
+  display: none;
+}

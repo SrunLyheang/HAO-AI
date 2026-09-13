@@ -1,8 +1,18 @@
 import { NextResponse } from "next/server";
 import { transcribeAudio } from "@/lib/groq-stt";
+import { AuthError, requireUser } from "@/lib/auth";
 import { ALLOWED_AUDIO_TYPES, parseTranscribeForm } from "./validate";
 
 export async function POST(req: Request) {
+  try {
+    await requireUser();
+  } catch (e) {
+    if (e instanceof AuthError) {
+      return NextResponse.json({ error: e.message }, { status: e.status });
+    }
+    throw e;
+  }
+
   let form: FormData;
   try {
     form = await req.formData();

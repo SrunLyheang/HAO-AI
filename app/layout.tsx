@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Newsreader, Geist, Geist_Mono } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
+import { ui } from "@clerk/ui";
 import "./globals.css";
 
 const newsreader = Newsreader({
@@ -27,11 +29,13 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      lang="en"
-      className={`${newsreader.variable} ${geistSans.variable} ${geistMono.variable}`}
-    >
-      <body>{children}</body>
-    </html>
+    <ClerkProvider ui={ui}>
+      <html
+        lang="en"
+        className={`${newsreader.variable} ${geistSans.variable} ${geistMono.variable}`}
+      >
+        <body>{children}</body>
+      </html>
+    </ClerkProvider>
   );
 }
