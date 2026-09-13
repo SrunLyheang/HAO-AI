@@ -17,7 +17,12 @@ Add `drizzle-orm` + `@neondatabase/serverless` + `drizzle-kit`, define
 in `db/index.ts`, generate the first migration, and add `DATABASE_URL` to
 `.env.example` — no application code calls any of this yet.
 
-## s
+## Why this is its own step (`ai-workflow-rules.md` §3.4)
+
+- "The unit changes the database schema. Do the migration and schema change
+  as one step, verify it applies cleanly, then build the feature that uses
+  it." 7b and 7c both depend on this schema existing and applying without
+  error before either writes a query against it.
 
 ## Prerequisites (user, dashboard — cannot be done from code)
 
