@@ -188,6 +188,20 @@ Unit 7c moved today's `app/page.tsx` client body here, taking initial
   count), `send()`'s existing generic-error path already surfaces that —
   no special-cased message is added here.
 
+### 7. Delete a past conversation (addendum — built beyond the original draft, documented here per `ai-workflow-rules.md` §6.2)
+
+- `db/queries.ts`: `deleteConversation(userId, conversationId): Promise<boolean>`
+  — scoped by both `userId` and `conversationId` via `findOwnedConversation`;
+  refuses to delete the `active` conversation (returns `false` — there is
+  always exactly one active conversation, so deleting it would violate that
+  invariant with nothing to fall back to until a new greeting is created).
+- `app/api/conversations/[id]/route.ts`: `DELETE` — `requireUser()` first,
+  `false` from `deleteConversation` → `404 { error: "Not found" }`, success →
+  `200 { ok: true }`. Same auth/ownership guarantees as `GET` on this route.
+- `components/HistoryPanel.tsx`: a delete action per archived row (not shown
+  on the "Current" row), calling `DELETE /api/conversations/[id]` and
+  removing the row from the list on success.
+
 ## Out of scope (explicitly — do not build now)
 
 - The server-side hard reject of a 26th `turns` insert and the
@@ -196,8 +210,9 @@ Unit 7c moved today's `app/page.tsx` client body here, taking initial
   experience once the cap is reached.
 - Re-implementing the archive/insert/prune transaction — reuse 7c's
   `createConversationWithGreeting`, per the correction above.
-- Editing, deleting, exporting, searching, or renaming past conversations —
-  history is list-and-view only, per `project-overview.md`'s scope.
+- Editing, exporting, searching, or renaming past conversations — history is
+  list-and-view (plus delete, see "In scope" addendum below) only, per
+  `project-overview.md`'s scope.
 - Pagination or infinite scroll on the history list — the 50-conversation
   retention cap (7c) already bounds the list size; render it as one flat
   list.
@@ -209,11 +224,11 @@ Unit 7c moved today's `app/page.tsx` client body here, taking initial
 
 | File | Change |
 |------|--------|
-| `db/queries.ts` | edit — export `createConversationWithGreeting`; add `listConversations`, `getConversationTurns` |
+| `db/queries.ts` | edit — export `createConversationWithGreeting`; add `listConversations`, `getConversationTurns`, `findOwnedConversation`, `deleteConversation` |
 | `types/index.ts` | edit — add `ConversationSummary extends Conversation` |
 | `app/api/conversations/route.ts` | new — `GET` (list), `POST` (new conversation, via `createConversationWithGreeting`) |
-| `app/api/conversations/[id]/route.ts` | new — `GET` (load one, read-only) |
-| `components/HistoryPanel.tsx` | new — Radix Dialog, list + fetch-on-select |
+| `app/api/conversations/[id]/route.ts` | new — `GET` (load one, read-only), `DELETE` (archived only) |
+| `components/HistoryPanel.tsx` | new — Radix Dialog, list + fetch-on-select + delete |
 | `components/ConversationScreen.tsx` | edit — `conversationId`/`viewMode` state, history icon wiring, "New conversation" button, 25-turn cap UI |
 
 ## Tests (`test/`)

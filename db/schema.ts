@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigserial, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigserial, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 export const settings = pgTable("settings", {
   userId: text("user_id").primaryKey(),
@@ -19,6 +19,7 @@ export const conversations = pgTable(
     uniqueIndex("conversations_one_active_per_user")
       .on(t.userId)
       .where(sql`${t.status} = 'active'`),
+    index("conversations_user_id_idx").on(t.userId),
   ],
 );
 

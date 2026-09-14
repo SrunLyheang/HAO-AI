@@ -88,8 +88,17 @@ export const turns = pgTable("turns", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
+  seq: bigserial("seq", { mode: "bigint" }).notNull(),
 });
 ```
+
+**Addendum (documented after the fact per `ai-workflow-rules.md` §6.2):**
+`turns.seq` (`bigserial`, monotonic per-table insert order) was added and is
+used for `ORDER BY` on turn lists instead of `createdAt` — two turns
+(user + AI) inserted in the same `db.batch()` call can land with an
+identical `createdAt` timestamp (same JS `Date` object, same millisecond),
+which `createdAt` alone can't order deterministically. `seq` guarantees
+insertion order regardless of timestamp collisions.
 
 - No `usage_log` table — that is Unit 9's, per `architecture.md`'s own
   table list and `build-spec.md`'s unit boundary. Do not add it here.
