@@ -1,7 +1,7 @@
-import { and, asc, count, eq } from "drizzle-orm";
+import { and, asc, desc, eq, count } from "drizzle-orm";
 import { db } from "@/db/index";
 import { conversations, settings, turns } from "@/db/schema";
-import type { Conversation, HskLevel, Turn } from "@/types";
+import type { Conversation, ConversationSummary, HskLevel, Turn } from "@/types";
 
 const MAX_CONVERSATIONS_PER_USER = 50;
 
@@ -41,7 +41,7 @@ export async function getOrCreateActiveConversation(
   if (existing) {
     const rows = await db.query.turns.findMany({
       where: and(eq(turns.conversationId, existing.id), eq(turns.userId, userId)),
-      orderBy: asc(turns.createdAt),
+      orderBy: asc(turns.seq),
     });
     return { conversation: toConversation(existing), turns: rows.map(toTurn) };
   }
@@ -56,7 +56,7 @@ export async function getOrCreateActiveConversation(
 // one extra row on a rare concurrent double-create — it cannot violate the
 // one-active-conversation invariant, which the DB's own partial unique
 // index (conversations_one_active_per_user) enforces regardless.
-async function createConversationWithGreeting(
+export async function createConversationWithGreeting(
   userId: string,
 ): Promise<{ conversation: Conversation; turns: Turn[] }> {
   const [{ value: total }] = await db
@@ -192,6 +192,41 @@ export async function countTurns(userId: string, conversationId: string): Promis
     .from(turns)
     .where(and(eq(turns.userId, userId), eq(turns.conversationId, conversationId)));
   return value;
+}
+
+export async function listConversations(userId: string): Promise<ConversationSummary[]> {
+  const rows = await db.query.conversations.findMany({
+    where: eq(conversations.userId, userId),
+    orderBy: desc(conversations.createdAt),
+  });
+
+  const summaries = await Promise.all(
+    rows.map(async (row) => {
+      const firstTurn = await db.query.turns.findFirst({
+        where: and(eq(turns.conversationId, row.id), eq(turns.userId, userId)),
+        orderBy: asc(turns.seq),
+      });
+      return { ...toConversation(row), preview: firstTurn?.textZh ?? "" };
+    }),
+  );
+
+  return summaries;
+}
+
+export async function getConversationTurns(
+  userId: string,
+  conversationId: string,
+): Promise<Turn[] | null> {
+  const owned = await db.query.conversations.findFirst({
+    where: and(eq(conversations.id, conversationId), eq(conversations.userId, userId)),
+  });
+  if (!owned) return null;
+
+  const rows = await db.query.turns.findMany({
+    where: and(eq(turns.conversationId, conversationId), eq(turns.userId, userId)),
+    orderBy: asc(turns.seq),
+  });
+  return rows.map(toTurn);
 }
 
 export async function getSettings(userId: string): Promise<{ hskLevel: HskLevel }> {

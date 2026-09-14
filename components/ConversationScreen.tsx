@@ -14,8 +14,11 @@ import HskPicker from "@/components/HskPicker";
 import ZhOnlyToggle from "@/components/ZhOnlyToggle";
 import DisplaySupportToggle from "@/components/DisplaySupportToggle";
 import TurnCard from "@/components/TurnCard";
+import HistoryPanel from "@/components/HistoryPanel";
 import { createPersistedPreference } from "@/components/preference-store";
 import * as conversation from "@/components/conversation-client";
+
+const MAX_TURNS_PER_CONVERSATION = 25;
 
 // Matches the current live-app rate options (see the ElevenLabs-speed-limit
 // note in lib/elevenlabs-tts.ts) — restyled here, not widened. Now selected
@@ -123,6 +126,10 @@ export default function ConversationScreen({
   initialTurns,
 }: ConversationScreenProps) {
   const [history, setHistory] = useState<Turn[]>(initialTurns);
+  const [conversationId, setConversationId] = useState(activeConversation.id);
+  const [viewMode, setViewMode] = useState<"live" | "history">("live");
+  const [historyTurns, setHistoryTurns] = useState<Turn[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [input, setInput] = useState("");
   const [inputMode, setInputMode] = useState<"talk" | "type">("talk");
   const [pending, setPending] = useState(false);
@@ -257,7 +264,7 @@ export default function ConversationScreen({
     setError(null);
     setPending(true);
 
-    const result = await conversation.reply(history, message, hskLevel, activeConversation.id);
+    const result = await conversation.reply(history, message, hskLevel, conversationId);
     if (!result.ok) {
       setError(result.error);
     } else {
@@ -266,6 +273,25 @@ export default function ConversationScreen({
     }
     setPending(false);
   }
+
+  async function startNewConversation() {
+    setError(null);
+    const res = await fetch("/api/conversations", { method: "POST" });
+    if (!res.ok) {
+      setError("Could not start a new conversation — try again.");
+      return;
+    }
+    const data: { conversation: Conversation; turns: Turn[] } = await res.json();
+    setConversationId(data.conversation.id);
+    setHistory(data.turns);
+    setTurnRates({});
+    setPending(false);
+    if (data.turns.length > 0) {
+      void speak(data.turns[0].text_zh, 0);
+    }
+  }
+
+  const conversationFull = history.length >= MAX_TURNS_PER_CONVERSATION;
 
   async function handleRecordedAudio(blob: Blob) {
     const result = await conversation.transcribe(
@@ -399,26 +425,59 @@ export default function ConversationScreen({
           }}
         >
           <HskPicker level={hskLevel} onChange={changeHskLevel} />
-          <span title="Conversation history (coming soon)">
-            <button
-              type="button"
-              disabled
-              aria-disabled="true"
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "var(--text-disabled)",
-                cursor: "not-allowed",
-                padding: "var(--space-3)",
-                borderRadius: "var(--radius-sm)",
-              }}
-            >
-              <ClockCounterClockwise weight="bold" size={26} />
-            </button>
-          </span>
+          <button
+            type="button"
+            onClick={() => setHistoryOpen(true)}
+            title="Conversation history"
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "var(--ink)",
+              cursor: "pointer",
+              padding: "var(--space-3)",
+              borderRadius: "var(--radius-sm)",
+            }}
+          >
+            <ClockCounterClockwise weight="bold" size={26} />
+          </button>
           <UserButton />
         </div>
       </div>
+
+      <HistoryPanel
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        onSelect={(turns) => {
+          setHistoryTurns(turns);
+          setViewMode("history");
+        }}
+      />
+
+      {viewMode === "history" && (
+        <div
+          style={{
+            maxWidth: 720,
+            margin: "0 auto",
+            padding: "0 var(--space-4)",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setViewMode("live")}
+            style={{
+              background: "var(--action)",
+              color: "var(--text-inverse)",
+              border: "none",
+              borderRadius: "var(--radius-sm)",
+              padding: "var(--space-2) var(--space-4)",
+              fontSize: "0.9375rem",
+              cursor: "pointer",
+            }}
+          >
+            ← Back to conversation
+          </button>
+        </div>
+      )}
 
       <div
         style={{
@@ -430,8 +489,8 @@ export default function ConversationScreen({
           gap: "var(--space-12)",
         }}
       >
-        {history.map((turn, i) => {
-          const isLast = i === history.length - 1;
+        {(viewMode === "history" ? historyTurns : history).map((turn, i) => {
+          const isLast = viewMode === "live" && i === history.length - 1;
           return (
             <TurnCard
               key={i}
@@ -473,9 +532,15 @@ export default function ConversationScreen({
           {error && <StatusLine variant="error">{error}</StatusLine>}
           {micError && <StatusLine variant="error">{micError}</StatusLine>}
           {speakError && <StatusLine variant="error">{speakError}</StatusLine>}
+          {viewMode === "live" && conversationFull && (
+            <StatusLine variant="error">
+              This conversation is full — start a new one to keep going.
+            </StatusLine>
+          )}
           {pending && <StatusLine variant="live">Thinking…</StatusLine>}
         </div>
 
+        {viewMode === "live" && (
         <div
           style={{
             backdropFilter: "blur(8px)",
@@ -501,11 +566,13 @@ export default function ConversationScreen({
               onClick={() =>
                 setInputMode((m) => (m === "talk" ? "type" : "talk"))
               }
+              disabled={conversationFull}
+              aria-disabled={conversationFull}
               style={{
                 background: "transparent",
                 border: "none",
-                color: "var(--ink)",
-                cursor: "pointer",
+                color: conversationFull ? "var(--text-disabled)" : "var(--ink)",
+                cursor: conversationFull ? "not-allowed" : "pointer",
                 padding: "var(--space-3)",
                 borderRadius: "var(--radius-sm)",
               }}
@@ -525,8 +592,12 @@ export default function ConversationScreen({
               <MicButton
                 onRecordingComplete={(blob) => void handleRecordedAudio(blob)}
                 onMicError={setMicError}
-                disabled={playingIndex !== null}
-                disabledMessage={MIC_BLOCKED_MESSAGE}
+                disabled={playingIndex !== null || conversationFull}
+                disabledMessage={
+                  conversationFull
+                    ? "This conversation is full — start a new one to keep going."
+                    : MIC_BLOCKED_MESSAGE
+                }
               />
             ) : (
               <div
@@ -560,7 +631,7 @@ export default function ConversationScreen({
                 <button
                   type="button"
                   onClick={() => void send(input)}
-                  disabled={pending || input.trim().length === 0}
+                  disabled={pending || conversationFull || input.trim().length === 0}
                   title="Send"
                   style={{
                     background: "transparent",
@@ -577,24 +648,50 @@ export default function ConversationScreen({
             )}
           </div>
 
-          <span title="Attach (coming soon)" style={{ justifySelf: "end" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-2)",
+              justifySelf: "end",
+            }}
+          >
             <button
               type="button"
-              disabled
-              aria-disabled="true"
+              onClick={() => void startNewConversation()}
+              title="New conversation"
               style={{
-                background: "transparent",
+                background: "var(--action)",
+                color: "var(--text-inverse)",
                 border: "none",
-                color: "var(--text-disabled)",
-                cursor: "not-allowed",
-                padding: "var(--space-3)",
                 borderRadius: "var(--radius-sm)",
+                padding: "var(--space-2) var(--space-4)",
+                fontSize: "0.9375rem",
+                cursor: "pointer",
               }}
             >
-              <Plus weight="bold" size={24} />
+              New conversation
             </button>
-          </span>
+            <span title="Attach (coming soon)">
+              <button
+                type="button"
+                disabled
+                aria-disabled="true"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--text-disabled)",
+                  cursor: "not-allowed",
+                  padding: "var(--space-3)",
+                  borderRadius: "var(--radius-sm)",
+                }}
+              >
+                <Plus weight="bold" size={24} />
+              </button>
+            </span>
+          </div>
         </div>
+        )}
       </div>
 
       <audio ref={audioRef} style={{ display: "none" }} />

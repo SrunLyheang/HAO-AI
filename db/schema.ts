@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigserial, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 export const settings = pgTable("settings", {
   userId: text("user_id").primaryKey(),
@@ -35,4 +35,5 @@ export const turns = pgTable("turns", {
   correction: text("correction"),
   correctionPinyin: text("correction_pinyin"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  seq: bigserial("seq", { mode: "bigint" }).notNull(),
 });

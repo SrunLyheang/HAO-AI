@@ -5,6 +5,16 @@ change.
 
 ## Current Phase
 
+- Unit 8 (history overlay + conversation lifecycle) — **implemented**
+  (2026-09-14) per `context/feature-spec/unit-8-history-conversation-lifecycle.md`.
+  `db/queries.ts` gained `listConversations`/`getConversationTurns` and
+  exported `createConversationWithGreeting`; new `app/api/conversations/`
+  routes; new `components/HistoryPanel.tsx` (Radix Dialog); the history
+  icon is enabled, a "New conversation" button and the 25-turn cap UI are
+  wired into `components/ConversationScreen.tsx`. See "Completed" below for
+  full detail. **Not yet done: the manual browser check** (real signed-in
+  session, mic/DeepSeek/ElevenLabs round trip) — same environment
+  limitation as every prior unit.
 - Unit 6 (Clerk auth) — **verified done** (2026-09-14, re-verification pass):
   see "Verified" below. Unit 7 (persistence) is now fully done: 7a (schema),
   7b (settings), and 7c (conversation/turn persistence, greeting seeded
@@ -19,6 +29,10 @@ change.
 
 ## Current Goal
 
+- Unit 8: implementation done, awaiting the manual browser check listed in
+  its own spec's "Manual browser check" section (history list contents,
+  read-only load, "New conversation", 25-turn cap) before it can be marked
+  fully verified.
 - Unit 6 auth: implementation done (bare `clerkMiddleware()`, the
   server-side root auth check, `AuthShell`, and a separate `/sign-up`
   route — see "Completed" below for how this design replaced the original
@@ -27,6 +41,91 @@ change.
   environment.
 
 ## Completed
+
+- 2026-09-14 (same day, sixth follow-up): **Unit 8 implemented** per
+  `context/feature-spec/unit-8-history-conversation-lifecycle.md`.
+  `db/queries.ts`: `createConversationWithGreeting` (already written by 7c)
+  is now `export`ed with no change to its body; two new functions,
+  `listConversations(userId)` (all conversations for a user, newest first,
+  each joined to its earliest turn's `text_zh` for the list preview — one
+  `findFirst` per conversation, acceptable at the existing 50-conversation
+  cap) and `getConversationTurns(userId, conversationId)` (scoped by both
+  IDs in the same query, `null` when not found or not owned by `userId` —
+  never a fallback to an unscoped lookup). `types/index.ts` gained
+  `ConversationSummary extends Conversation { preview: string }`. New
+  `app/api/conversations/route.ts` (`GET` → `listConversations`, `POST` →
+  `createConversationWithGreeting`, same response shape as 7c's
+  `getOrCreateActiveConversation` so the client handles both identically)
+  and `app/api/conversations/[id]/route.ts` (`GET` only, `404` on a `null`
+  result — no `PATCH`/`DELETE`, loading history never mutates it). New
+  `@radix-ui/react-dialog` dependency; new `components/HistoryPanel.tsx` —
+  a right-sliding Radix `Dialog` per `ui-context.md`'s History spec
+  (`max-width: 420px`, `--radius-lg` left corners, the `0 2px 8px` shadow
+  exception, `--scrim` overlay, `--font-mono` dates, one-line CSS-truncated
+  previews, `border-bottom` separators, `--surface-sunken` row hover),
+  fetching the list on open (not on load) and fetching a selected archived
+  conversation's turns on click; the "Current" row just closes the dialog.
+  `components/ConversationScreen.tsx`: new `conversationId` state (seeded
+  from the `conversation` prop, updated by "New conversation", now the
+  value `send()` sends instead of the static prop) and `viewMode: "live" |
+  "history"` state; the previously-disabled history icon now opens
+  `HistoryPanel`; selecting an archived row sets `viewMode = "history"` and
+  stores the loaded turns in a separate `historyTurns` state (the live
+  `history` state is never overwritten by a read-only view); while in
+  history mode the turn list renders `historyTurns` instead of `history`,
+  the mic/type-toggle/New-conversation bottom bar is hidden entirely, and a
+  "← Back to conversation" button above the transcript returns to
+  `viewMode = "live"`. New "New conversation" button (`POST
+  /api/conversations`, replaces `history` with the returned seeded-greeting
+  `turns`, updates `conversationId`, resets `turnRates`, auto-plays the
+  greeting via the existing `speak()` path). 25-turn cap: once
+  `history.length >= MAX_TURNS_PER_CONVERSATION` (25, mirrors
+  `app/api/chat/route.ts`'s existing server-side constant), the type/talk
+  toggle, mic button, and send button are disabled and a `StatusLine`
+  message appears ("This conversation is full — start a new one to keep
+  going."); "New conversation" stays enabled throughout as the way out — no
+  new server-side check added, since 7c's `countTurns`/`MAX_TURNS_PER_CONVERSATION`
+  reject already covers the race case per the spec's explicit scope note.
+  New `test/conversations-auth-guard.test.ts` (401 before any `db/queries.ts`
+  call, all three routes, same mocking shape as `test/auth-guard.test.ts`),
+  `test/conversations-ownership.test.ts` (a `null` `getConversationTurns`
+  result yields `404`, proving no unscoped fallback), and
+  `test/queries-conversations-list.test.ts` (`listConversations`'
+  newest-first ordering, per-row preview text, and the empty-preview
+  fallback when a conversation has no turns yet).
+  **One lint fix during this pass:** `HistoryPanel`'s initial `useEffect`
+  called `setError(null)` synchronously in the effect body, which
+  `react-hooks/set-state-in-effect` flags — moved that reset into the
+  fetch's success callback instead (error only clears once new data
+  actually arrives, matching the rule's "setState in a callback triggered
+  by an external event" guidance).
+  **Unrelated concurrent change noticed during this pass, not made by this
+  session:** `db/schema.ts` gained a `turns.seq` `bigserial` column (with
+  a new `drizzle/0002_young_tusk.sql` migration, not yet confirmed applied
+  to the live Neon database) and `db/queries.ts`'s existing turn-ordering
+  `orderBy` clauses switched from `asc(turns.createdAt)` to `asc(turns.seq)`
+  — landed on disk mid-session from outside this conversation. Read as a
+  legitimate fix for a real tie-ordering bug (`appendTurnPair` inserts both
+  turns of a pair with the same `now` timestamp, so ordering by `createdAt`
+  alone can't guarantee stable order within a pair) and left in place per
+  the standing instruction not to silently revert another party's work;
+  this session's own new `getConversationTurns` was aligned to the same
+  `asc(turns.seq)` ordering for consistency with every other query in the
+  file. **Flagging, not resolved:** confirm the `0002_young_tusk.sql`
+  migration has actually been applied to the Neon database before relying
+  on any turn ordering in production — untracked/unapplied would silently
+  break `getOrCreateActiveConversation`, `listConversations`, and this
+  unit's `getConversationTurns` alike.
+  `npx tsc --noEmit`, `npm run lint`, `npm run build` (route table now
+  lists `/api/conversations` and `/api/conversations/[id]`), and `npm test`
+  (120 tests, up from 117 before the DB `seq` migration's unrelated changes
+  plus this unit's 3 new files) all green. **Not yet done:** the spec's own
+  manual browser check (open history with only the current conversation;
+  two+ archived conversations sorted correctly; select an archived row and
+  confirm read-only load + hidden controls + "Back to conversation"; "New
+  conversation" mid-conversation; drive a conversation to 25 turns and
+  confirm the disabled-input message) — needs a real signed-in session,
+  same environment limitation as every prior unit's manual-check gap.
 
 - 2026-09-14 (same day, fifth follow-up): **"Sign up" link went nowhere; a
   real `/sign-up` route added.** User report: clicking "Sign up" on the

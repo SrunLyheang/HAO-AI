@@ -43,6 +43,11 @@ export type AiTurn = Extract<Turn, { role: "ai" }>;
 /** A conversation row (Unit 7c). */
 export type Conversation = { id: string; status: "active" | "archived"; createdAt: string };
 
+/** A conversation row plus its opening turn's text, for the history list (Unit 8). */
+export interface ConversationSummary extends Conversation {
+  preview: string; // first turn's text_zh; one-line truncation is CSS, not here
+}
+
 /** The /api/transcribe success shape. */
 export type TranscribeResponse = { text: string };
 

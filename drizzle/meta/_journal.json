@@ -15,6 +15,13 @@
       "when": 1789323994909,
       "tag": "0001_married_alex_wilder",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789367011960,
+      "tag": "0002_young_tusk",
+      "breakpoints": true
     }
   ]
 }
