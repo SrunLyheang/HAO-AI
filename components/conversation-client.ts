@@ -40,13 +40,14 @@ export async function reply(
   history: Turn[],
   message: string,
   hskLevel: HskLevel,
+  conversationId: string,
 ): Promise<ClientResult<Turn>> {
   try {
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "content-type": "application/json" },
       // Send history *before* this user turn; message carries the new turn.
-      body: JSON.stringify({ history, message, hskLevel }),
+      body: JSON.stringify({ history, message, hskLevel, conversationId }),
     });
     return await parseJsonResult<Turn>(res);
   } catch {

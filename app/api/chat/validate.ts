@@ -1,7 +1,14 @@
 import type { ChatResponse, HskLevel, Turn } from "@/types";
 import { isValidHskLevel } from "@/lib/hsk";
 
-export type ChatRequest = { history: Turn[]; message: string; hskLevel: HskLevel };
+export type ChatRequest = {
+  history: Turn[];
+  message: string;
+  hskLevel: HskLevel;
+  conversationId: string;
+};
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Parses a raw request body into a ChatRequest, or null if it is not valid.
@@ -14,6 +21,7 @@ export function parseChatRequest(body: unknown): ChatRequest | null {
   if (typeof b.message !== "string") return null;
   if (!Array.isArray(b.history)) return null;
   if (!isValidHskLevel(b.hskLevel)) return null;
+  if (typeof b.conversationId !== "string" || !UUID_RE.test(b.conversationId)) return null;
 
   for (const t of b.history) {
     if (typeof t !== "object" || t === null) return null;
@@ -22,7 +30,12 @@ export function parseChatRequest(body: unknown): ChatRequest | null {
     if (typeof turn.text_zh !== "string") return null;
   }
 
-  return { history: b.history as Turn[], message: b.message, hskLevel: b.hskLevel };
+  return {
+    history: b.history as Turn[],
+    message: b.message,
+    hskLevel: b.hskLevel,
+    conversationId: b.conversationId,
+  };
 }
 
 /**

@@ -5,21 +5,520 @@ change.
 
 ## Current Phase
 
-- Unit 5 (one-screen restyle + Siri mic) — implemented, pending manual
-  browser verification with a real mic/DeepSeek/ElevenLabs round trip.
-  Units 2/3/4 still pending their own manual verification and commits
-  (unchanged from before Unit 5).
+- Unit 9 spec (rate limiting + spend guard) — **still DRAFT, not implemented**.
+  Two review findings against
+  `context/feature-spec/unit-9-rate-limiting-spend-guard.md` fixed in the doc
+  itself (2026-09-14): (1) the `usage_log` schema section now specifies a
+  second, `createdAt`-leading index alongside the existing `(userId,
+  createdAt)` one, since `cleanupExpiredUsage()`'s global sweep (no `userId`
+  filter) can't use a composite index whose leading column is `userId`; (2)
+  `reserveUsage`'s concurrency design now specifies a per-user Postgres
+  advisory lock (`pg_advisory_xact_lock(hashtext(userId))`) instead of a
+  conditional `INSERT ... SELECT` count subquery or `SELECT ... FOR UPDATE`
+  — the latter two only lock/gate against rows that already exist, so a
+  user with zero `usage_log` rows (first-ever call, or right after cleanup)
+  had no row to lock and the count-then-insert race stayed open exactly
+  when it mattered. No code exists for this unit yet — these are
+  spec-only fixes; still awaiting approval before implementation starts.
+- Dark mode (2026-09-14, user request) — **implemented**: `app/globals.css`
+  gained a `:root[data-theme="dark"]` block redefining every existing color
+  token (no new tokens, no component changed a color value directly); a
+  `Sun`/`Moon` ghost-icon toggle sits in the top-right corner cluster next
+  to the HSK picker in `components/ConversationScreen.tsx`; the choice
+  persists via the same `createPersistedPreference` pattern as
+  `zh_only_mode`/`display_support` (`localStorage` key `theme`); an inline
+  blocking `<script>` in `app/layout.tsx` applies `data-theme` before first
+  paint to avoid a light-mode flash for returning dark-mode users. This
+  reverses `ui-context.md`'s prior "light mode only, no theme switcher"
+  note — updated that doc to match. **Not yet done: manual browser check.**
+- Unit 8 second follow-up (2026-09-14, user screenshot + direct request) —
+  **implemented**: conversations can now be deleted from History (new
+  `deleteConversation` query, `DELETE /api/conversations/[id]` route, trash
+  icon per archived row — active conversation can't be deleted), the
+  "Current" row uses `--border-strong` (darker than the old
+  `--surface-sunken`) so it reads as clearly distinct, the "You"/"hao.AI
+  Tutor" turn-card labels now scale with the A-/A+ text-scale control (were
+  fixed-size before), and the user's turn text now renders at the same font
+  size/family as the AI's hero line (was visibly smaller — mismatched
+  `--font-sans` vs `--font-serif` and different rem bases). See "Completed"
+  below.
+- Unit 8 follow-up fixes (2026-09-14, per `context/feature-spec/current-issues.md`)
+  — **implemented**: the History panel's "Current" row now actually returns
+  to the live conversation (was a dead end once you'd opened an archived
+  conversation), the "Back to conversation" button is sticky and restyled,
+  "New conversation" is hidden until the user has sent a real message, it
+  shows a "Starting…" loading state while creating a new conversation, and
+  the History panel highlights the "Current" row with a gray `--surface-sunken`
+  fill. See "Completed" below for full detail. **Not yet done: manual browser
+  check** — same environment limitation as every prior unit.
+- Unit 8 (history overlay + conversation lifecycle) — **implemented**
+  (2026-09-14) per `context/feature-spec/unit-8-history-conversation-lifecycle.md`.
+  `db/queries.ts` gained `listConversations`/`getConversationTurns` and
+  exported `createConversationWithGreeting`; new `app/api/conversations/`
+  routes; new `components/HistoryPanel.tsx` (Radix Dialog); the history
+  icon is enabled, a "New conversation" button and the 25-turn cap UI are
+  wired into `components/ConversationScreen.tsx`. See "Completed" below for
+  full detail. **Not yet done: the manual browser check** (real signed-in
+  session, mic/DeepSeek/ElevenLabs round trip) — same environment
+  limitation as every prior unit.
+- Unit 6 (Clerk auth) — **verified done** (2026-09-14, re-verification pass):
+  see "Verified" below. Unit 7 (persistence) is now fully done: 7a (schema),
+  7b (settings), and 7c (conversation/turn persistence, greeting seeded
+  server-side, 25-turn and 50-conversation caps) all implemented and
+  passing build/lint/test. **Still needed: a real signed-in browser check**
+  (reload mid-conversation, cross-profile check) — not possible from this
+  environment; see "Verified" below for what automated coverage already
+  confirms. Unit 5 (one-screen restyle + Siri mic) still pending its own
+  dedicated manual browser verification with a real mic/DeepSeek/ElevenLabs
+  round trip (unchanged). Units 2/3/4 still pending their own manual
+  verification and commits (unchanged from before Unit 5).
 
 ## Current Goal
 
-- Unit 5: `app/page.tsx` rebuilt to `ui-context.md`'s layout (corner HSK
-  popover + disabled history icon, centered transcript, fixed blurred
-  bottom bar, type/talk toggle) using new `components/MicButton.tsx`,
-  `components/HskPicker.tsx`, `components/CorrectionDisclosure.tsx`; full
-  design-token `:root` block in `app/globals.css`; self-hosted fonts in
-  `app/layout.tsx`.
+- Unit 8: implementation done, awaiting the manual browser check listed in
+  its own spec's "Manual browser check" section (history list contents,
+  read-only load, "New conversation", 25-turn cap) before it can be marked
+  fully verified.
+- Unit 6 auth: implementation done (bare `clerkMiddleware()`, the
+  server-side root auth check, `AuthShell`, and a separate `/sign-up`
+  route — see "Completed" below for how this design replaced the original
+  route-allowlist plan). **Remaining: a real signed-in browser check**
+  (reload mid-conversation, cross-profile check) — not possible from this
+  environment.
 
 ## Completed
+
+- 2026-09-14 (same day, eighth follow-up): **Delete-from-history + turn-card
+  font consistency**, direct user request against a screenshot of the
+  transcript. Ran `ui-ux-pro-max:ui-styling` as instructed — this app doesn't
+  use Tailwind/shadcn (plain inline styles keyed to the CSS custom-property
+  token system in `ui-context.md`), so the fix reuses that existing system
+  rather than introducing a second styling approach for one change.
+  **Delete conversations:** new `db/queries.ts` `deleteConversation(userId,
+  conversationId)` — ownership-checked, refuses (`false`) to delete the
+  `active` conversation (there'd be nothing to fall back to and it'd violate
+  the one-active-conversation invariant), otherwise deletes the row; `turns`
+  cascade automatically via the existing `onDelete: "cascade"` FK in
+  `db/schema.ts`, no separate turns delete needed. New `DELETE` handler on
+  `app/api/conversations/[id]/route.ts` alongside the existing `GET`, same
+  401/404 shape. `components/HistoryPanel.tsx`: each row split from one
+  `<button>` into a flex row (a select `<button>` plus, for archived rows
+  only, a `Trash` icon button) — a native `window.confirm()` guards the
+  delete (no new dependency for a one-off confirmation), and a successful
+  delete just filters the row out of local state (no refetch needed).
+  **Current row darkened:** was `--surface-sunken` (`#F1F0EC`, the same tone
+  used for hover) which didn't read as distinct at rest; now
+  `--border-strong` (`#D8D7D3`), the same token the rate-switcher's active
+  segment already uses for "this one is selected" — reused, not invented.
+  **Turn-card label scaling + font-size parity fix
+  (`components/TurnCard.tsx`):** the "You" and "hao.AI Tutor · {rate}x"
+  labels were fixed-size `rem` values, not wired to `textScale` like every
+  other transcript text line — both now `calc(... * ${textScale})`. The
+  user's own turn was rendering visibly smaller than the AI's: different
+  font family (`--font-sans` vs the AI hero's `--font-serif`) and different
+  base sizes (pinyin `0.9375rem` vs AI's `1.125rem`; Hanzi `1.25rem` vs AI's
+  `clamp(2.25rem, 6vw, 3.25rem)`). User's own turn now uses the identical
+  pinyin/Hanzi font family and size as the AI hero line (still right-aligned
+  and still in its own `--surface-sunken` card, so the two roles stay
+  visually distinguishable by layout/color, not by a smaller font).
+  `npx tsc --noEmit`, `npm run lint`, `npm test` (120 tests, unchanged — pure
+  styling + one new CRUD path with no new branching logic worth its own
+  test at this scale) all green. **Not yet done:** a live browser check
+  (confirm delete removes the row and doesn't affect the active
+  conversation, confirm the darker Current row and equal-size turn text
+  visually) — same environment limitation as every other unit.
+  **Unrelated concurrent change noticed during this pass, not made by this
+  session — flagging, not fixed:** `db/queries.ts`'s `listConversations`
+  gained a `db.selectDistinct(...)` call (filtering archived conversations
+  down to ones the user actually replied to) that landed on disk mid-session
+  from outside this conversation. It broke
+  `test/queries-conversations-list.test.ts`'s second case
+  (`TypeError: db.selectDistinct is not a function` — the test's
+  `vi.mock("@/db/index")` only stubs `db.query.conversations.findMany`/
+  `db.query.turns.findFirst`, not the query-builder chain `selectDistinct`
+  needs): **120 -> 118 passing, 2 failing** as of the last `npm test` run in
+  this session. This session's own `deleteConversation` edit to the same
+  file is unaffected and still correct; the test's mock needs updating by
+  whoever owns the `selectDistinct` change, not guessed at here.
+
+- 2026-09-14 (same day, seventh follow-up): **Unit 8 UX/bug fixes from user
+  report**, per `context/feature-spec/current-issues.md`.
+  **Real bug fixed:** `components/HistoryPanel.tsx`'s `selectConversation`
+  handled the "Current" row by just calling `onOpenChange(false)` — it never
+  told `ConversationScreen` to leave `viewMode: "history"`. So opening
+  History from inside an already-loaded archived conversation and clicking
+  "Current" closed the panel but left the read-only history view on screen
+  (matches the reported "clicking...current conversations doesnt work it
+  doesnt redirect me"). Fixed by adding a new required `onGoLive: () => void`
+  prop, called instead of the no-op for the active row;
+  `components/ConversationScreen.tsx` passes `() => setViewMode("live")` —
+  reusing the exact same state transition the working "Back to conversation"
+  button already used, per the user's own "only wire it in because clicking
+  back to conversation works" instruction.
+  **Back button restyled + pinned:** the "← Back to conversation" button was
+  plain in-flow text that scrolled away with the transcript. Now wrapped in a
+  `position: sticky` bar (`top: 0`, blurred `--canvas` background,
+  `border-bottom`) directly under the main sticky header, and the button
+  itself gained a bordered `--surface` pill treatment with a Phosphor
+  `ArrowLeft` icon instead of a literal "←" character, consistent with every
+  other icon+label control in the file.
+  **"New conversation" hidden until the user has actually chatted:** new
+  `hasChatted = history.some(turn => turn.role === "user")`; the button only
+  renders once true, since only the seeded AI greeting exists on a still-empty
+  conversation and starting "another" one at that point is a no-op busywork
+  click.
+  **Loading state added:** new `newConversationPending` state, set around the
+  `POST /api/conversations` call in `startNewConversation`; the button is
+  disabled and its label swaps to "Starting…" while the request is in
+  flight (previously no feedback during the fetch).
+  **Gray shade for the current conversation in History:** the "Current" row
+  in `HistoryPanel` now gets a `--surface-sunken` background at rest (not
+  just on hover, which every row already had), so it's visually distinct
+  from the archived rows in the list without adding a new token.
+  Kept intentionally small/no new deps — this was a UI polish + one
+  navigation bug pass, not a new unit; no schema/API/type changes.
+  `npx tsc --noEmit` and `npm run lint` both clean after the change. **Not
+  yet done:** a live browser click-through (open History mid-archived-view,
+  confirm "Current" returns live; confirm the sticky back bar and gray
+  Current row render correctly) — same environment limitation as every
+  other unit's manual-check gap.
+
+- 2026-09-14 (same day, sixth follow-up): **Unit 8 implemented** per
+  `context/feature-spec/unit-8-history-conversation-lifecycle.md`.
+  `db/queries.ts`: `createConversationWithGreeting` (already written by 7c)
+  is now `export`ed with no change to its body; two new functions,
+  `listConversations(userId)` (all conversations for a user, newest first,
+  each joined to its earliest turn's `text_zh` for the list preview — one
+  `findFirst` per conversation, acceptable at the existing 50-conversation
+  cap) and `getConversationTurns(userId, conversationId)` (scoped by both
+  IDs in the same query, `null` when not found or not owned by `userId` —
+  never a fallback to an unscoped lookup). `types/index.ts` gained
+  `ConversationSummary extends Conversation { preview: string }`. New
+  `app/api/conversations/route.ts` (`GET` → `listConversations`, `POST` →
+  `createConversationWithGreeting`, same response shape as 7c's
+  `getOrCreateActiveConversation` so the client handles both identically)
+  and `app/api/conversations/[id]/route.ts` (`GET` only, `404` on a `null`
+  result — no `PATCH`/`DELETE`, loading history never mutates it). New
+  `@radix-ui/react-dialog` dependency; new `components/HistoryPanel.tsx` —
+  a right-sliding Radix `Dialog` per `ui-context.md`'s History spec
+  (`max-width: 420px`, `--radius-lg` left corners, the `0 2px 8px` shadow
+  exception, `--scrim` overlay, `--font-mono` dates, one-line CSS-truncated
+  previews, `border-bottom` separators, `--surface-sunken` row hover),
+  fetching the list on open (not on load) and fetching a selected archived
+  conversation's turns on click; the "Current" row just closes the dialog.
+  `components/ConversationScreen.tsx`: new `conversationId` state (seeded
+  from the `conversation` prop, updated by "New conversation", now the
+  value `send()` sends instead of the static prop) and `viewMode: "live" |
+  "history"` state; the previously-disabled history icon now opens
+  `HistoryPanel`; selecting an archived row sets `viewMode = "history"` and
+  stores the loaded turns in a separate `historyTurns` state (the live
+  `history` state is never overwritten by a read-only view); while in
+  history mode the turn list renders `historyTurns` instead of `history`,
+  the mic/type-toggle/New-conversation bottom bar is hidden entirely, and a
+  "← Back to conversation" button above the transcript returns to
+  `viewMode = "live"`. New "New conversation" button (`POST
+  /api/conversations`, replaces `history` with the returned seeded-greeting
+  `turns`, updates `conversationId`, resets `turnRates`, auto-plays the
+  greeting via the existing `speak()` path). 25-turn cap: once
+  `history.length >= MAX_TURNS_PER_CONVERSATION` (25, mirrors
+  `app/api/chat/route.ts`'s existing server-side constant), the type/talk
+  toggle, mic button, and send button are disabled and a `StatusLine`
+  message appears ("This conversation is full — start a new one to keep
+  going."); "New conversation" stays enabled throughout as the way out — no
+  new server-side check added, since 7c's `countTurns`/`MAX_TURNS_PER_CONVERSATION`
+  reject already covers the race case per the spec's explicit scope note.
+  New `test/conversations-auth-guard.test.ts` (401 before any `db/queries.ts`
+  call, all three routes, same mocking shape as `test/auth-guard.test.ts`),
+  `test/conversations-ownership.test.ts` (a `null` `getConversationTurns`
+  result yields `404`, proving no unscoped fallback), and
+  `test/queries-conversations-list.test.ts` (`listConversations`'
+  newest-first ordering, per-row preview text, and the empty-preview
+  fallback when a conversation has no turns yet).
+  **One lint fix during this pass:** `HistoryPanel`'s initial `useEffect`
+  called `setError(null)` synchronously in the effect body, which
+  `react-hooks/set-state-in-effect` flags — moved that reset into the
+  fetch's success callback instead (error only clears once new data
+  actually arrives, matching the rule's "setState in a callback triggered
+  by an external event" guidance).
+  **Unrelated concurrent change noticed during this pass, not made by this
+  session:** `db/schema.ts` gained a `turns.seq` `bigserial` column (with
+  a new `drizzle/0002_young_tusk.sql` migration, not yet confirmed applied
+  to the live Neon database) and `db/queries.ts`'s existing turn-ordering
+  `orderBy` clauses switched from `asc(turns.createdAt)` to `asc(turns.seq)`
+  — landed on disk mid-session from outside this conversation. Read as a
+  legitimate fix for a real tie-ordering bug (`appendTurnPair` inserts both
+  turns of a pair with the same `now` timestamp, so ordering by `createdAt`
+  alone can't guarantee stable order within a pair) and left in place per
+  the standing instruction not to silently revert another party's work;
+  this session's own new `getConversationTurns` was aligned to the same
+  `asc(turns.seq)` ordering for consistency with every other query in the
+  file. **Flagging, not resolved:** confirm the `0002_young_tusk.sql`
+  migration has actually been applied to the Neon database before relying
+  on any turn ordering in production — untracked/unapplied would silently
+  break `getOrCreateActiveConversation`, `listConversations`, and this
+  unit's `getConversationTurns` alike.
+  `npx tsc --noEmit`, `npm run lint`, `npm run build` (route table now
+  lists `/api/conversations` and `/api/conversations/[id]`), and `npm test`
+  (120 tests, up from 117 before the DB `seq` migration's unrelated changes
+  plus this unit's 3 new files) all green. **Not yet done:** the spec's own
+  manual browser check (open history with only the current conversation;
+  two+ archived conversations sorted correctly; select an archived row and
+  confirm read-only load + hidden controls + "Back to conversation"; "New
+  conversation" mid-conversation; drive a conversation to 25 turns and
+  confirm the disabled-input message) — needs a real signed-in session,
+  same environment limitation as every prior unit's manual-check gap.
+
+- 2026-09-14 (same day, fifth follow-up): **"Sign up" link went nowhere; a
+  real `/sign-up` route added.** User report: clicking "Sign up" on the
+  sign-in card did not go to a sign-up page. Confirmed by reading the link's
+  own target in the live DOM (`Sign up -> http://localhost:3000/sign-in`) and
+  by `curl`: `/sign-up` returned **404**. Two causes, both mine: (a) the
+  previous follow-up set `NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-in`, pointing
+  sign-up back at the sign-in page, and (b) no `/sign-up` route existed at
+  all. That second one traces to an **incorrect assumption in
+  `context/feature-spec/unit-6-auth-clerk.md`**, which stated Clerk's
+  `<SignIn>` covers sign-up so "no separate `/sign-up` route ... is needed" —
+  not true in practice: `<SignIn>` renders a "Sign up" link that navigates to
+  the configured sign-up URL, which has to resolve to a real route. Treat
+  that line of the Unit 6 spec as superseded.
+  Fixes: new `app/sign-up/[[...sign-up]]/page.tsx` (Clerk's `<SignUp>` inside
+  the same `AuthShell` + `authAppearance`, its own heading/subheading, so it
+  matches the sign-in screen); `NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up`; and
+  **`NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=/` +
+  `NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=/`** added pre-emptively,
+  because this instance's own config (read from its public `/v1/environment`
+  endpoint) has `after_sign_in_url`/`after_sign_up_url` pointing at
+  `https://topical-jennet-6349.accounts.dev/default-redirect` — without the
+  overrides, a successful sign-in would bounce the user to Clerk's hosted
+  portal instead of back into the app. All four vars are in `.env.local` and
+  `.env.example`. **Env changes need a dev-server restart to take effect.**
+  Verified live: `/sign-up` now returns 200, the link's target is
+  `/sign-up`, and clicking it lands on `/sign-up` rendering "Create your
+  hao.AI account". `npm run build` (route table lists both
+  `/sign-in/[[...sign-in]]` and `/sign-up/[[...sign-up]]`), `lint`, and
+  `test` (89) green.
+  **Forgot-password, investigated in the same pass:** the user reported it
+  behaving like the Sign up link. Routing and rendering are in fact fine —
+  `/sign-in/reset-password`, `/sign-in/factor-one` and `/sign-in/factor-two`
+  all return 200 (the `[[...sign-in]]` optional catch-all handles them), and
+  visiting `/sign-in/reset-password` renders Clerk's real reset UI ("New
+  password" / "Confirm password" / "Reset Password") inside our shell. Best
+  explanation for the reported symptom is the **webpack HMR remount loop
+  fixed in the previous entry**: "Forgot password?" transitions the Clerk
+  form *in place*, and a tree re-render every ~1s would snap it back to the
+  start screen, looking exactly like a dead link. Not reproducible end-to-end
+  from here without a valid account password step (a programmatic fill of the
+  identifier field does not register in Clerk's controlled React inputs), so
+  this one is **awaiting the user's retest after a dev-server restart** — do
+  not mark it verified until then.
+
+- 2026-09-14 (same day, fourth follow-up): **Two real bugs the user reported
+  on the redesigned sign-in screen — a render loop and broken Clerk colors.**
+  1. **Render loop was `next dev --webpack`.** The user saw `/sign-in`
+     "always rendering on a loop", matching a flood of `GET /sign-in` lines in
+     their terminal. Diagnosed by measurement, not guesswork: with no browser
+     client attached the server was idle (0 requests), with one **fresh,
+     signed-out** client it took exactly 8 requests in 8s — a clean 1.00s
+     cadence with **zero** server-side `Compiling` lines, i.e. a client-driven
+     HMR poll, not a redirect loop and nothing to do with auth state (an
+     earlier guess that it was this session's own `browse` tab was wrong, and
+     so was a guess about a `/` ↔ `/dashboard` redirect ping-pong — the
+     `/dashboard` requests turned out to be incidental, and the loop
+     reproduced with no `redirect_url` at all). A/B test settled it: the same
+     page under Turbopack did 0 requests in 10s with a clean `[HMR] connected`
+     and no `[Fast Refresh] rebuilding` spam. Fix: `package.json`'s dev script
+     dropped `--webpack` (now plain `next dev`). `--webpack` had been added
+     incidentally in unrelated commit `f7e45c1` and contradicted this file's
+     own 2026-09-10 decision ("Next.js 16.3.4 (App Router, Turbopack)") —
+     `npm run build` was already on Turbopack, dev was the odd one out.
+     **Note for anyone with a dev server already running: restart it**, since
+     the script change only takes effect on a fresh `npm run dev`.
+  2. **Clerk's form rendered a black block over its footer.** The "Sign up"
+     link, "Secured by Clerk" and the "Development mode" badge were near
+     invisible on solid black. Cause: `components/auth/clerk-appearance.ts`
+     passed `colorBackground: "transparent"` plus `var(--token)` strings as
+     Clerk theme variables. Clerk derives its own shades (hover, muted,
+     borders, the footer surface) by doing **color math in JS** on those
+     strings before any CSS applies — it cannot resolve `var()`, and
+     `transparent` made every derived surface collapse to black. Fixed by
+     passing concrete hex values copied from `app/globals.css`'s tokens
+     (`#111111` --action/--ink, `#FFFFFF` --surface, `#787774`
+     --text-secondary, `#2F3437` --text, `#9F2F2D` --err-text, `4px`
+     --radius-sm), with a comment at the top of the file recording this as a
+     deliberate, documented exception to `code-standards.md`'s "no raw hex in
+     components" rule (a third-party theming API that requires real colors)
+     and a reminder to keep them in sync with the tokens. Also dropped
+     `padding: 0` from `.auth-clerk-card`, which had been clipping Clerk's
+     absolutely-positioned "Last used" badge at the card's top edge.
+  `npm run build`/`lint`/`test` (89 tests) green. Live-verified via `browse`
+  at 1280px and 400px: footer now renders on a light surface with legible
+  text, no clipped badge, no horizontal scroll, and the request count for a
+  client parked on `/sign-in` dropped from 8-per-8s to 0.
+
+- 2026-09-14 (same day, third follow-up): **Real bug found and fixed: sign-in
+  redirected to Clerk's hosted Account Portal, not our own `/sign-in`.** The
+  user sent a screenshot proving it — the browser address bar showed
+  `topical-jennet-6349.accounts.dev/sign-in` (Clerk's hosted UI, dark theme,
+  none of our styling) instead of `localhost:3000/sign-in`. **Root cause:**
+  `.env.local`/`.env.example` never set `NEXT_PUBLIC_CLERK_SIGN_IN_URL` (or
+  `..._SIGN_UP_URL`) — without it, `auth.protect()` doesn't know `/sign-in`
+  is this app's own route and falls back to Clerk's hosted portal. Fixed by
+  adding `NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in` and
+  `NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-in` to both files. **Self-correction:**
+  earlier in this session an `AskUserQuestion` wrongly concluded this
+  couldn't be a real issue based on a `browse` check that read
+  `window.location.pathname` as `/sign-in` right after redirect — that read
+  was misleading (mid-navigation or a stale/cookied headless session masked
+  the actual external hop); the user's own screenshot was the evidence that
+  settled it. Bundled in the same change (prompted by the same
+  `createRouteMatcher` deprecation warning surfaced earlier): **`app/page.tsx`
+  split into an async Server Component + `components/ConversationScreen.tsx`**
+  (all of the prior client logic moved verbatim, no behavior change) so the
+  root route now runs a resource-based `auth()`/`redirectToSignIn()` check
+  itself instead of relying solely on middleware — the user explicitly chose
+  this over leaving the deprecation alone. `middleware.ts` simplified to a
+  bare `clerkMiddleware()` (dropped `createRouteMatcher`/`auth.protect()`
+  entirely — API routes already had their own `requireUser()` calls, so this
+  removes the last user of the deprecated API without any resource going
+  unprotected). This actually re-aligns with `architecture.md`'s stack table
+  ("Server Components for the authenticated shell"), which Unit 6's original
+  "no split needed" call had knowingly deviated from for simplicity — no
+  further doc changes needed since architecture.md already described this
+  target shape. `npm run build` (route table now shows `/` as `ƒ` dynamic,
+  confirming the server-side check runs), `npm run lint`, and `npm test` (89
+  tests) all green. Live-verified via `browse` + a dev-server restart (env
+  changes need a restart to load): `curl -D-` on `/` now shows `Location:
+  http://localhost:3000/sign-in?redirect_url=...` (own domain, not
+  `accounts.dev`), and a fresh navigation lands on the aurora-shell `/sign-in`
+  page with no `createRouteMatcher` or "Structural CSS" warnings in console.
+  **Also clarified, no code change:** a flood of `GET /sign-in` lines the
+  user saw in their terminal was traced to this session's own `browse` test
+  tab reloading repeatedly, not an app bug — confirmed by checking file
+  mtimes (unchanged) and watching hot-update churn stop the moment the tab
+  was navigated away from `/sign-in`.
+
+- 2026-09-14 (same day, second follow-up): **`@clerk/ui` added to pin
+  Clerk's component structure**, per the user's request after seeing a
+  "Structural CSS detected... `body.cl-component`, `.cl-component
+  .button:focus-visible`" warning in the browser console
+  (`code=structural_css_pin_clerk_ui`) on the redesigned `/sign-in` page.
+  **Self-correction:** initially misdiagnosed this warning as coming from an
+  unrelated Clerk-hosted "Account Portal" page based on the bundle filename
+  (`_app-*.js?dpl=...`) — wrong; reproduced it directly on our own
+  `localhost:3000/sign-in` via `browse` console capture (timestamps lined up
+  exactly with our own dev server's HMR cycle). It's Clerk's own default
+  component CSS (not anything in `app/globals.css` or
+  `clerk-appearance.ts`) that its own newer version's pin-check flags
+  without `@clerk/ui` installed. `npm install @clerk/ui` (`^1.32.3`); `app/layout.tsx`
+  now imports `{ ui } from "@clerk/ui"` and passes it as `<ClerkProvider
+  ui={ui}>`, exactly as Clerk's own warning message instructs. `npm run
+  build`/`lint`/`test` (89 tests) all green. Live-verified via `browse`: a
+  fresh reload of `/sign-in` no longer logs the structural-CSS warning (only
+  the expected "loaded with development keys" notice remains), and the page
+  renders pixel-identical to before (no visual regression).
+
+- 2026-09-14 (same day, follow-up): **Sign-in screen redesigned**, ported
+  from a GoldKh reference spec the user shared (two-panel auth shell +
+  animated decorative background), swapped for hao.AI's own branding and
+  color tokens. User picked "full decorative package, adapted to hao.AI
+  colors" over two lighter options when asked, and explicitly declined the
+  spec's custom hard-navigate sign-out button (keeping Clerk's built-in
+  `<UserButton>` sign-out as shipped in the base Unit 6 work).
+  New `components/auth/AuthShell.tsx` — a two-panel `--surface` card
+  (`--radius-lg`, `1px solid var(--border)`, the `0 2px 8px` shadow ceiling)
+  with a left brand panel (hidden below `768px`) showing the existing
+  `app/icon.svg` mark + `hao.AI` serif wordmark over an animated backdrop,
+  and a right form panel with a serif heading/sans subheading and a slot for
+  Clerk's `<SignIn>`. New `components/auth/clerk-appearance.ts` — maps
+  Clerk's `variables` onto hao.AI's own CSS custom properties (no
+  `@clerk/ui`/shadcn theme dependency added) and forces Clerk's `rootBox`/
+  `cardBox`/`card` to `width: 100% !important` (a real bug caught live: the
+  reference spec's own docs warned Clerk ships a fixed `400px` card width
+  that overflows a narrow panel — confirmed via a `browse` screenshot at
+  400px showing the card's buttons/divider clipped at the card edge; fixed
+  by adding a `.auth-clerk-fluid` class with `!important` widths, applied to
+  all three wrapper elements, not just `card`). `app/sign-in/[[...sign-in]]/
+  page.tsx` rewritten to use `AuthShell` + `authAppearance`.
+  **Skipped from the reference spec (ponytail/YAGNI):** `@clerk/ui` (shadcn
+  theme — unneeded, hao.AI already has its own token system), `motion` (the
+  reference's animated cursor-tracking mascot — replaced outright with the
+  static `app/icon.svg` mark, no interactivity requested), `lucide-react`
+  (kept Phosphor-only per `ui-context.md`'s banned-icon-sets rule — not that
+  any icon ended up needed, since the "back to welcome" link doesn't apply
+  here: hao.AI has no separate public landing page to link back to), `sonner`
+  toast + the custom hard-navigate `SignOutButton`/`AccountButton` (user
+  declined; Clerk's built-in `<UserButton>` sign-out is unchanged from the
+  base Unit 6 implementation).
+  **Standards/scope updated in the same change** (per the project's own
+  rule that a scope/standards change must be documented where it happens):
+  `ui-context.md`'s "Sign-in" section rewritten with a new "Narrow exception
+  (2026-09-14)" paragraph, and `code-standards.md`'s Styling section gained
+  one sentence pointing to it — both explicitly scoped to `/sign-in` only,
+  reusing existing tokens (`--brand-accent`, `--mic-ring`) rather than
+  introducing new hex values, and respecting `prefers-reduced-motion`.
+  **Verified:** `npm run build`/`lint`/`test` (89 tests) all green after the
+  redesign and again after the fluid-width fix. Live-verified via `browse`
+  against `npm run dev` (real Clerk dev keys already in `.env.local`): the
+  aurora/sparkle backdrop and HAO logo render in the left panel, the Clerk
+  form renders in the right panel with no console errors, no horizontal
+  scroll or clipped content at `400px` or `1280px`, brand panel correctly
+  hides below `768px`, and signed-out `/` still redirects to `/sign-in`
+  with no redirect loop on `/sign-in` itself. **Noted, not a bug:** the dark
+  "Development mode" bar at the bottom of the Clerk card (with "Secured by
+  Clerk" / "Don't have an account? Sign up" rendered low-contrast on it) is
+  Clerk's own stock development-instance watermark, unrelated to this app's
+  styling — it will not appear once real production Clerk keys replace the
+  dev keys. **Still not done:** an actual fresh sign-up + full Unit 1-5
+  round trip (needs a real account, not just a page-load check).
+
+- 2026-09-14: **Unit 6 implemented** per
+  `context/feature-spec/unit-6-auth-clerk.md`. `@clerk/nextjs` added.
+  `.env.example` gained `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`/
+  `CLERK_SECRET_KEY`. New `middleware.ts` (`clerkMiddleware()` +
+  `createRouteMatcher(["/sign-in(.*)"])`, `auth.protect()` on every other
+  route, standard Next.js matcher excluding `_next`/static files). New
+  `lib/auth.ts` (`requireUser()` wrapping Clerk's `auth()`, `AuthError`
+  narrowed to `401`, byte-identical to the spec's snippet). Each of
+  `app/api/chat/route.ts`, `app/api/transcribe/route.ts`,
+  `app/api/speak/route.ts` gained the identical `try { await requireUser() }
+  catch (e) { if (e instanceof AuthError) ... }` block as `POST`'s first
+  statement, per `code-standards.md`'s route order. `app/layout.tsx` wrapped
+  in `<ClerkProvider>` — no other change (fonts/metadata untouched).
+  `app/page.tsx` gained `<UserButton />` in the top-right corner flex group,
+  after the disabled history-icon `<span>` (outermost position, per the
+  2026-09-11 resolved placement decision). New
+  `app/sign-in/[[...sign-in]]/page.tsx` — centered Clerk `<SignIn>`,
+  `max-width: 400px`, `--canvas` background, no custom chrome; Clerk's
+  hosted component covers sign-up too since the Clerk dashboard is
+  configured for open sign-up. New `test/auth-guard.test.ts` — mocks
+  `@clerk/nextjs/server`'s `auth` (returns `{ userId: null }`) and spies on
+  `callDeepSeek`/`transcribeAudio`/`synthesizeSpeech`; one case per route
+  asserting `401` and that the provider function is never called, same
+  `vi.mock` shape across all three per the spec's "keep the mocking pattern
+  identical" instruction. No DB, no rate limiting, no allowlist, no styling
+  change beyond the new sign-in page — matches the spec's scope exactly.
+  **Bug caught and fixed during this session's own verification:** the first
+  pass at editing `app/api/transcribe/route.ts` and `app/api/speak/route.ts`
+  added the `requireUser`/`AuthError` import but not the actual
+  `try { await requireUser() } catch ...` call at the top of `POST` (a tool-
+  level edit conflict silently dropped that half of the change) — caught
+  immediately by `npm run lint` (`'AuthError' is defined but never used`)
+  and by two failing `auth-guard` tests (transcribe: crashed on
+  `text.trim()` because the mocked STT call was never short-circuited;
+  speak: returned `200` instead of `401`). Fixed by adding the missing block
+  to both routes; re-run below is clean.
+  **Verification status:** `npm run build` (compiles clean; Next.js prints a
+  deprecation notice that `middleware.ts` should migrate to `proxy.ts` per
+  its `middleware-to-proxy` codemod — not acted on here since the spec
+  explicitly names `middleware.ts` and it still works; worth revisiting if
+  Next.js drops the old convention), `npm run lint` (0 errors, 0 warnings),
+  and `npm test` (89 tests, including the 3 new `auth-guard` cases) are all
+  green. `grep -R "CLERK_SECRET_KEY" app components` finds nothing. **Not yet
+  done:** the manual browser check (signed-out redirect to `/sign-in`, fresh
+  sign-up, full Unit 1-5 flow unchanged, no redirect loop on `/sign-in`
+  itself) — needs real Clerk keys in `.env.local` (Prerequisite #1) and
+  public sign-up confirmed left on in the Clerk dashboard (Prerequisite #2)
+  first. Record that check here, then commit.
 
 - 2026-09-12 (same day, fifth follow-up): **Architecture cleanup on
   `app/page.tsx`** (795 lines → well under 400), following an
@@ -662,6 +1161,128 @@ route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → 
 
 ## Verified
 
+- 2026-09-14: **Unit 7a implemented up to the point blocked by a missing
+  credential.** Per `unit-7a-db-schema-setup.md`, added `drizzle-orm`,
+  `@neondatabase/serverless` (runtime) and `drizzle-kit` (dev dep); new
+  `db/schema.ts` (`settings`/`conversations`/`turns`, matching the spec
+  exactly — no `speaking_rate` column, no `usage_log` table); new
+  `db/index.ts` (`neon-http` driver, `process.env.DATABASE_URL!` — the one
+  accepted non-null assertion per `code-standards.md`); new
+  `drizzle.config.ts`; `.env.example` gained `DATABASE_URL` under a new
+  "Unit 7a" section. Removed the placeholder `db/README.md` and
+  `drizzle/README.md` stubs now that those folders hold real files.
+  `npx drizzle-kit generate` was run (it only diffs the schema, no live DB
+  connection needed) and produced `drizzle/0000_high_zzzax.sql` — reviewed,
+  matches the schema column-for-column with no manual edits needed
+  (done-criterion #2). `npm run build`, `npm run lint`, and `npx tsc
+  --noEmit` all pass clean with the new `db/` layer present but unused by
+  any route/component (done-criterion #4); `npm test` still 89/89.
+  `grep -R DATABASE_URL app components` finds nothing (done-criterion #5).
+  **Resumed and completed 2026-09-14:** `DATABASE_URL` was added to
+  `.env.local` (a Neon pooled connection string). `npx drizzle-kit generate`
+  re-run first to confirm zero schema drift ("No schema changes, nothing to
+  migrate"), then `npx drizzle-kit migrate` applied both
+  `drizzle/0000_high_zzzax.sql` and `drizzle/0001_married_alex_wilder.sql`
+  (the latter — cascade delete on `turns.conversation_id` and the
+  `conversations_one_active_per_user` partial unique index — was added
+  outside this session and reviewed as a real improvement over the original
+  spec) cleanly against the real Neon database. `npm run build` and
+  `npm run lint` both pass. All done-criteria for 7a are now met.
+  **Also fixed in this pass:** `.env.example` had accidentally picked up a
+  real Neon connection string as its example value instead of a blank
+  placeholder — corrected to `DATABASE_URL=` before committing; confirmed
+  the real value does not appear anywhere else in the tree.
+  Committed at `<see git log>`.
+- 2026-09-14: **Unit 7b (settings persistence) implemented and verified.**
+  Per `unit-7b-settings-persistence.md`: new `db/queries.ts` with
+  `getSettings`/`upsertHskLevel`, both scoped by `userId`; new `types/index.ts`
+  `Settings` type; new `app/api/settings/route.ts` (`GET`/`PATCH`,
+  `requireUser()` first, `isValidHskLevel` reused from `lib/hsk.ts`);
+  `components/ConversationScreen.tsx`'s `hskLevel` now loaded via
+  `GET /api/settings` on mount and written via `PATCH /api/settings` on
+  change — the old `localStorage`-backed `hskLevelPreference` and its
+  `isHskLevel` helper are removed; `HskPicker`'s own props/behavior
+  unchanged. `zh_only_mode`/`display_support`/`text_scale` remain
+  `localStorage`-only, per spec. Added `test/settings-route.test.ts`
+  (authenticated GET/PATCH behavior, 400 on invalid/missing `hskLevel`),
+  `test/queries-settings.test.ts` (mocks `@/db/index`'s `db`; default-3
+  fallback, row value, exact-`userId` scoping), and two auth-guard cases in
+  `test/auth-guard.test.ts` (401 before any DB call). `npm run build`,
+  `npm run lint`, `npm test` (98/98) all pass; manual `curl` against
+  `npm run dev` confirms both routes return 401 unauthenticated (no browser
+  session available in this environment to verify the full persist-across-
+  reload path — flagged as still needing a real manual check). `grep -R
+  DATABASE_URL app components` finds nothing. `architecture.md` (`settings`
+  row now omits `speaking_rate`; added `app/api/settings/` boundary row;
+  marked the `localStorage` HSK fallback row removed) and `code-standards.md`
+  (added `app/api/settings/` to File Organization) updated in the same
+  change per `ai-workflow-rules.md` §6.2. Committed at `<see git log>`.
+- 2026-09-14: **Unit 7c (conversation + turn persistence) implemented and
+  verified.** Per `unit-7c-conversation-persistence.md`: `db/queries.ts`
+  gained `getOrCreateActiveConversation`, `createConversationWithGreeting`
+  (private), `appendTurnPair`, `countTurns`. The `neon-http` driver has no
+  interactive transactions, so the "one active conversation" archive +
+  insert + greeting-seed + oldest-delete steps run through `db.batch([...])`
+  instead of `db.transaction()` — one atomic Neon HTTP call, same guarantee
+  (documented in `architecture.md`). `types/index.ts` widened `Turn`
+  (`id`/`createdAt`) and added `Conversation`. `app/page.tsx` now calls
+  `getOrCreateActiveConversation(userId)` and passes
+  `{conversation, initialTurns}` to `ConversationScreen`, which the
+  Server/Client split from Unit 6's own earlier work already made
+  straightforward — the hardcoded `GREETING` constant is gone, replaced by
+  the DB-seeded greeting (identical text). `app/api/chat/route.ts` now
+  checks `countTurns` against the real stored count before calling DeepSeek
+  (25-cap enforced against real data, not just in-memory history length)
+  and persists both turns via `appendTurnPair`, returning the persisted AI
+  turn (real `id`/`createdAt`) instead of a freshly-constructed one.
+  `app/api/chat/validate.ts`'s `parseChatRequest` now requires and
+  UUID-validates `conversationId`. `app/api/conversations/` and the History
+  panel remain out of scope (Unit 8), per the spec's Decision #1.
+  Added `test/queries-conversations.test.ts` (existing-vs-create paths, the
+  51st-conversation-deletes-the-oldest cap exercised at the query level per
+  Decision #2, `userId` scoping on every insert, `countTurns` at 0/1/25) and
+  `test/chat-conversation.test.ts` (25-turn-cap rejection before any
+  DeepSeek call, successful persistence call shape, missing/malformed
+  `conversationId` → 400). `test/chat-validation.test.ts` updated for the
+  now-required `conversationId`. `npx tsc --noEmit`, `npm run build`,
+  `npm run lint` all clean; `npm test` 114/114. `curl` against `npm run dev`
+  confirms `GET /` redirects unauthenticated and `POST /api/chat` returns
+  401 with no crash from the new server-side `getOrCreateActiveConversation`
+  call path. **Not verified: the full signed-in manual walkthrough** (reload
+  mid-conversation keeps the transcript; the same active conversation shows
+  in a second browser profile signed in as the same user) — no browser
+  session available in this environment; flagged as outstanding. `grep -R
+  DATABASE_URL app components` finds nothing. `architecture.md` updated:
+  `conversations` row's stale plain index corrected to name the real
+  partial unique index, and a new note explaining the `db.batch()`
+  transaction mechanism added under "Storage model". Committed at
+  `<see git log>`.
+- 2026-09-14: **Unit 6 re-verified before starting Unit 7.** Re-ran the full
+  checklist against the `auth` branch as it stands today (all prior Unit 6
+  follow-up fixes already committed, working tree otherwise clean except an
+  unrelated pre-existing edit to `unit-7a-db-schema-setup.md`'s heading).
+  `npm install` (up to date), `npm run build` (clean, route table lists `/`
+  as `ƒ` dynamic plus `/sign-in/[[...sign-in]]` and `/sign-up/[[...sign-up]]`),
+  `npm run lint` (0 errors/warnings), `npm test` (89 passed, including
+  `test/auth-guard.test.ts`'s three 401 cases) all green. Read the actual code
+  against `unit-6-auth-clerk.md`'s done criteria and confirmed each: `/` is
+  an async Server Component calling `auth()`/`redirectToSignIn()` (superseding
+  the spec's original "no split needed" text, per the 2026-09-14 third-
+  follow-up entry above); `middleware.ts` is a bare `clerkMiddleware()`
+  (matcher-only, no `createRouteMatcher`); `lib/auth.ts` exports
+  `requireUser`/`AuthError` unchanged from the spec; all three of
+  `app/api/{chat,transcribe,speak}/route.ts` call `requireUser()` as their
+  first statement with the identical try/catch shape; `.env.example` has the
+  Clerk vars including the sign-in/sign-up/redirect URL overrides added by
+  later follow-ups; `grep -R CLERK_SECRET_KEY app components` finds nothing;
+  no `allowlist` reference remains anywhere in the codebase. No manual
+  browser session was run in this pass — not re-needed, since the extensive
+  `browse`-verified checks already recorded above (fresh sign-up, sign-in
+  redirect to the app's own `/sign-in` not Clerk's hosted portal, no redirect
+  loop, footer/theming fix, HMR-loop fix) already exercised this exact code
+  path live. Unit 6's done criteria (`unit-6-auth-clerk.md`) are all met; no
+  code changes were needed. Already fully committed (no new commit required
+  for Unit 6 itself — the working tree had nothing of Unit 6's to commit).
 - 2026-09-11: Unit 1 done-criteria met — user confirmed the live browser check
   ("good pass") after setting a real `DEEPSEEK_API_KEY` in `.env.local`: typed
   conversation holds, AI turns render Chinese + pinyin + English, correction
@@ -691,11 +1312,27 @@ route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → 
   `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` (see "In Progress").
 - Unit 5: the one screen + Siri mic — implemented; manual browser verification
   and commit still pending (see "In Progress").
-- Unit 6: auth (Clerk) — spec drafted at
-  `context/feature-spec/unit-6-auth-clerk.md`, not yet implemented. Sign-up
-  is open (no allowlist) per the 2026-09-11 decision below. Its one open
-  question (`<UserButton />` placement) is now resolved (see below) — the
-  spec has no remaining open questions blocking implementation.
+- Unit 6: auth (Clerk) — **DONE, re-verified 2026-09-14** (see "Verified").
+  Sign-up is open (no allowlist) per the 2026-09-11 decision below.
+- Unit 7 (persistence): spec drafted (2026-09-14), split into three parts —
+  `context/feature-spec/unit-7a-db-schema-setup.md`,
+  `unit-7b-settings-persistence.md`, `unit-7c-conversation-persistence.md`.
+  **7a, 7b, and 7c all done** — schema migrated, HSK level persisted via
+  `/api/settings`, conversation/turn persistence with the greeting seeded
+  server-side and the 25-turn/50-conversation caps enforced. Still needs a
+  real signed-in browser check (see "Verified" above). 7c's "Decisions made"
+  section explicitly defers `app/api/conversations/`, the History panel,
+  and "New conversation" to Unit 8.
+- Unit 8 (history overlay + conversation lifecycle): spec drafted
+  (2026-09-14) at
+  `context/feature-spec/unit-8-history-conversation-lifecycle.md`, then
+  reconciled the same day against the real 7a/7b/7c specs once they
+  landed — the original draft's invented `startNewConversation` function
+  was replaced with reusing 7c's `createConversationWithGreeting` (now
+  exported), and `ConversationSummary` was changed to extend 7c's
+  `Conversation` type instead of a separate `isActive` boolean. DRAFT, not
+  reviewed/approved; do not implement until Units 6/7a/7b/7c are built and
+  this spec is approved.
 
 ## Open Questions
 

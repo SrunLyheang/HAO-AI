@@ -37,7 +37,7 @@ Implementation rules for hao.AI. These bind all code in the repo. They sit under
 ## Styling
 
 - Use the design tokens from `app/globals.css` as CSS custom properties. No hardcoded hex, rgb, or px color values in components. If a token is missing, add it to `globals.css`, don't inline the value.
-- Follow the minimalist-ui system: canvas `--canvas`, surface `--surface`, border `--border` (always `1px solid`), text `--text`, muted `--muted`, ink `--ink`. Accent pastels are semantic only — recording, correction/above-level, complete — never decoration. The one exception (2026-09-12): `--brand-accent` (`#FF6B6B`, from `app/icon.svg`), scoped narrowly to the wordmark icon and the Native Polish Tip's "Easy Fix" tag — see `ui-context.md`. Do not extend it to other elements without an explicit decision.
+- Follow the minimalist-ui system: canvas `--canvas`, surface `--surface`, border `--border` (always `1px solid`), text `--text`, muted `--muted`, ink `--ink`. Accent pastels are semantic only — recording, correction/above-level, complete — never decoration. The one exception (2026-09-12): `--brand-accent` (`#FF6B6B`, from `app/icon.svg`), scoped narrowly to the wordmark icon and the Native Polish Tip's "Easy Fix" tag — see `ui-context.md`. Do not extend it to other elements without an explicit decision. A second, narrower exception (2026-09-14) permits blurred gradient blobs and a CSS-only sparkle layer, restricted entirely to the `/sign-in` screen's brand panel — see `ui-context.md`'s "Sign-in" section for the exact scope. Neither exception loosens the rule for the conversation screen.
 - Border radius is `8px` or `12px` maximum. No `rounded-full` on containers, cards, or primary buttons (the mic button is the one intentional circle).
 - No gradients, no glow, no heavy shadows. Hover shadow ceiling is `0 2px 8px rgba(0,0,0,0.04)`.
 - Spacing uses the 8px scale (4 / 8 / 12 / 16 / 24 / 32 / 48 / 64). Content column max-width 640px. Side gutter is set once on one outer wrapper, never as a `padding` shorthand that zeroes the sides.
@@ -77,6 +77,7 @@ Implementation rules for hao.AI. These bind all code in the repo. They sit under
 - `app/api/transcribe/` — the only caller of the Groq STT client (`lib/groq-stt.ts`).
 - `app/api/chat/` — the only caller of the DeepSeek client; also runs pinyin generation, turn persistence, and the 25-turn cap. (Above-level flagging was implemented then removed for inaccuracy — see progress-tracker.md.)
 - `app/api/speak/` — the only caller of the ElevenLabs TTS client (`lib/elevenlabs-tts.ts`); takes text only, no rate (applied client-side).
+- `app/api/settings/` — reads/writes the user's HSK level (`GET`/`PATCH`). No provider calls.
 - `app/api/conversations/` — history list, single-conversation load, new-conversation creation, archive. No provider calls.
 - `components/` — presentational and interactive UI. No secrets, no provider SDKs, no direct DB access. Server data arrives as props.
 - `lib/` — server-only modules, one concern each: `deepseek.ts`, `groq-stt.ts`, `elevenlabs-tts.ts`, `pinyin.ts`, `hsk.ts`, `ratelimit.ts`, `auth.ts`. Never imported by a client component.

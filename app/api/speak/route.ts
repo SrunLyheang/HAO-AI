@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { synthesizeSpeech } from "@/lib/elevenlabs-tts";
+import { requireUserOrResponse } from "@/lib/auth";
 import { parseSpeakRequest } from "./validate";
 
 export async function POST(req: Request) {
+  const authResult = await requireUserOrResponse();
+  if (authResult instanceof NextResponse) return authResult;
+
   let body: unknown;
   try {
     body = await req.json();
