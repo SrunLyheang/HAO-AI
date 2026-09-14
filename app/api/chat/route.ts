@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { callDeepSeek, type ChatMessage } from "@/lib/deepseek";
 import { toPinyin } from "@/lib/pinyin";
 import { AuthError, requireUser } from "@/lib/auth";
-import { appendTurnPair, countTurns } from "@/db/queries";
+import { appendTurnPair, ConversationNotFoundError, countTurns } from "@/db/queries";
 import type { HskLevel, Turn } from "@/types";
 import { parseChatRequest, parseChatResponse } from "./validate";
 import { buildSystemPrompt } from "./prompt";
@@ -89,17 +89,25 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Bad model response" }, { status: 502 });
   }
 
-  const aiTurn = await appendTurnPair(
-    userId,
-    parsed.conversationId,
-    { text_zh: parsed.message },
-    {
-      text_zh: reply.reply_zh,
-      pinyin: toPinyin(reply.reply_zh),
-      text_en: reply.reply_en,
-      correction: reply.correction,
-      correctionPinyin: reply.correction === "" ? "" : toPinyin(reply.correction),
-    },
-  );
+  let aiTurn;
+  try {
+    aiTurn = await appendTurnPair(
+      userId,
+      parsed.conversationId,
+      { text_zh: parsed.message },
+      {
+        text_zh: reply.reply_zh,
+        pinyin: toPinyin(reply.reply_zh),
+        text_en: reply.reply_en,
+        correction: reply.correction,
+        correctionPinyin: reply.correction === "" ? "" : toPinyin(reply.correction),
+      },
+    );
+  } catch (e) {
+    if (e instanceof ConversationNotFoundError) {
+      return NextResponse.json({ error: e.message }, { status: 404 });
+    }
+    throw e;
+  }
   return NextResponse.json(aiTurn);
 }

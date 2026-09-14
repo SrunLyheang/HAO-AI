@@ -40,7 +40,7 @@ export async function getOrCreateActiveConversation(
   });
   if (existing) {
     const rows = await db.query.turns.findMany({
-      where: eq(turns.conversationId, existing.id),
+      where: and(eq(turns.conversationId, existing.id), eq(turns.userId, userId)),
       orderBy: asc(turns.createdAt),
     });
     return { conversation: toConversation(existing), turns: rows.map(toTurn) };
@@ -125,6 +125,12 @@ async function createConversationWithGreeting(
   };
 }
 
+export class ConversationNotFoundError extends Error {
+  constructor() {
+    super("Conversation not found");
+  }
+}
+
 export async function appendTurnPair(
   userId: string,
   conversationId: string,
@@ -137,6 +143,11 @@ export async function appendTurnPair(
     correctionPinyin: string;
   },
 ): Promise<Turn> {
+  const owned = await db.query.conversations.findFirst({
+    where: and(eq(conversations.id, conversationId), eq(conversations.userId, userId)),
+  });
+  if (!owned) throw new ConversationNotFoundError();
+
   const now = new Date();
   const aiTurnId = crypto.randomUUID();
 

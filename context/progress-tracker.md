@@ -19,15 +19,12 @@ change.
 
 ## Current Goal
 
-- Unit 6: gate every route behind a Clerk session. New `middleware.ts`
-  (`clerkMiddleware()`, everything protected except `/sign-in`), new
-  `lib/auth.ts` (`requireUser()`, `AuthError`), `requireUser()` added as the
-  first statement in `app/api/{chat,transcribe,speak}/route.ts`,
-  `app/layout.tsx` wrapped in `<ClerkProvider>`, new
-  `app/sign-in/[[...sign-in]]/page.tsx` (centered Clerk `<SignIn>`), and
-  `<UserButton />` added to `app/page.tsx`'s top-right corner group, right of
-  the (disabled) history icon. No allowlist — sign-up is open per the
-  2026-09-11 decision.
+- Unit 6 auth: implementation done (bare `clerkMiddleware()`, the
+  server-side root auth check, `AuthShell`, and a separate `/sign-up`
+  route — see "Completed" below for how this design replaced the original
+  route-allowlist plan). **Remaining: a real signed-in browser check**
+  (reload mid-conversation, cross-profile check) — not possible from this
+  environment.
 
 ## Completed
 

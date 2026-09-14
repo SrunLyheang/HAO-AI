@@ -78,16 +78,13 @@ const textScalePreference = createPersistedPreference<TextScale>({
 });
 
 // Per-turn "sent at" time, display-only (mirrors the mockup's timestamps).
-// Client-only, like turnRates — not part of the Turn shape or any API
-// contract, since there is no persistence layer for turns yet.
-function formatTurnTime(ts: number | undefined): string {
-  return ts === undefined
-    ? ""
-    : new Date(ts).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      });
+// Now sourced from each turn's persisted createdAt (Unit 7c).
+function formatTurnTime(createdAt: string): string {
+  return new Date(createdAt).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }
 
 function StatusLine({
@@ -139,9 +136,6 @@ export default function ConversationScreen({
   // Per-AI-turn playback speed (index -> rate), default 1x. Replaces the old
   // single app-wide rate switcher (see progress-tracker.md).
   const [turnRates, setTurnRates] = useState<Record<number, SpeakingRate>>({});
-  // Per-turn "sent at" time, display-only — seeded for the greeting, then
-  // appended alongside setHistory in send() below.
-  const [turnTimestamps, setTurnTimestamps] = useState<number[]>([]);
   const textScale = useSyncExternalStore(
     textScalePreference.subscribe,
     textScalePreference.read,
@@ -153,13 +147,18 @@ export default function ConversationScreen({
   // default getSettings() returns for a brand-new user, so there is no
   // visible flash once the fetch resolves.
   const [hskLevel, setHskLevel] = useState<HskLevel>(3);
+  // Guards the initial GET from clobbering a level the user already changed
+  // before it resolved, and chains PATCHes so out-of-order responses can't
+  // persist a stale level (see progress-tracker.md, settings race fix).
+  const hskLevelUserChanged = useRef(false);
+  const hskLevelWriteChain = useRef(Promise.resolve());
 
   useEffect(() => {
     let cancelled = false;
     fetch("/api/settings")
       .then((r) => r.json())
       .then((data: { hskLevel: HskLevel }) => {
-        if (!cancelled) setHskLevel(data.hskLevel);
+        if (!cancelled && !hskLevelUserChanged.current) setHskLevel(data.hskLevel);
       });
     return () => {
       cancelled = true;
@@ -167,12 +166,15 @@ export default function ConversationScreen({
   }, []);
 
   function changeHskLevel(level: HskLevel) {
+    hskLevelUserChanged.current = true;
     setHskLevel(level);
-    void fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ hskLevel: level }),
-    });
+    hskLevelWriteChain.current = hskLevelWriteChain.current.then(() =>
+      fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hskLevel: level }),
+      }).then(() => undefined),
+    );
   }
   const displaySupport = useSyncExternalStore(
     displaySupportPreference.subscribe,
@@ -209,11 +211,6 @@ export default function ConversationScreen({
   useEffect(() => {
     lastTurnRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [history.length]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setTurnTimestamps([Date.now()]), 0);
-    return () => window.clearTimeout(timer);
-  }, []);
 
   async function speak(text: string, index: number) {
     if (playingIndex !== null) return;
@@ -256,7 +253,6 @@ export default function ConversationScreen({
     };
     const nextHistory = [...history, userTurn];
     setHistory(nextHistory);
-    setTurnTimestamps((t) => [...t, Date.now()]);
     setInput("");
     setError(null);
     setPending(true);
@@ -266,7 +262,6 @@ export default function ConversationScreen({
       setError(result.error);
     } else {
       setHistory([...nextHistory, result.data]);
-      setTurnTimestamps((t) => [...t, Date.now()]);
       void speak(result.data.text_zh, nextHistory.length);
     }
     setPending(false);
@@ -442,7 +437,7 @@ export default function ConversationScreen({
               key={i}
               ref={isLast ? lastTurnRef : undefined}
               turn={turn}
-              time={formatTurnTime(turnTimestamps[i])}
+              time={formatTurnTime(turn.createdAt)}
               textScale={textScale}
               displaySupport={displaySupport}
               rate={turnRates[i] ?? 1}

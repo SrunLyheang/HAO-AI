@@ -126,6 +126,13 @@ describe("50-conversation retention cap", () => {
 
 describe("appendTurnPair", () => {
   it("inserts both turns scoped to the given userId", async () => {
+    findFirstConversations.mockResolvedValue({
+      id: "conv_1",
+      userId: "user_1",
+      status: "active",
+      createdAt: new Date("2026-01-01T00:00:00Z"),
+    });
+
     const aiTurn = await appendTurnPair(
       "user_1",
       "conv_1",
