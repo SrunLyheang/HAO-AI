@@ -33,7 +33,12 @@ vi.mock("@/db/index", () => ({
   },
 }));
 
-import { appendTurnPair, countTurns, getOrCreateActiveConversation } from "@/db/queries";
+import {
+  appendTurnPair,
+  countTurns,
+  findOwnedConversation,
+  getOrCreateActiveConversation,
+} from "@/db/queries";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -146,6 +151,24 @@ describe("appendTurnPair", () => {
       expect(call[0]).toMatchObject({ userId: "user_1", conversationId: "conv_1" });
     }
     expect(aiTurn).toMatchObject({ role: "ai", text_zh: "你好！" });
+  });
+});
+
+describe("findOwnedConversation", () => {
+  it("returns the conversation when it belongs to the given user", async () => {
+    findFirstConversations.mockResolvedValue({ id: "conv_1", userId: "user_1", status: "active" });
+
+    const result = await findOwnedConversation("user_1", "conv_1");
+
+    expect(result).toMatchObject({ id: "conv_1", userId: "user_1" });
+  });
+
+  it("returns undefined when the conversation isn't owned by the user", async () => {
+    findFirstConversations.mockResolvedValue(undefined);
+
+    const result = await findOwnedConversation("user_1", "conv_1");
+
+    expect(result).toBeUndefined();
   });
 });
 

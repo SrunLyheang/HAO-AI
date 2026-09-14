@@ -131,6 +131,12 @@ export class ConversationNotFoundError extends Error {
   }
 }
 
+export async function findOwnedConversation(userId: string, conversationId: string) {
+  return db.query.conversations.findFirst({
+    where: and(eq(conversations.id, conversationId), eq(conversations.userId, userId)),
+  });
+}
+
 export async function appendTurnPair(
   userId: string,
   conversationId: string,
@@ -143,9 +149,7 @@ export async function appendTurnPair(
     correctionPinyin: string;
   },
 ): Promise<Turn> {
-  const owned = await db.query.conversations.findFirst({
-    where: and(eq(conversations.id, conversationId), eq(conversations.userId, userId)),
-  });
+  const owned = await findOwnedConversation(userId, conversationId);
   if (!owned) throw new ConversationNotFoundError();
 
   const now = new Date();
@@ -228,9 +232,7 @@ export async function getConversationTurns(
   userId: string,
   conversationId: string,
 ): Promise<Turn[] | null> {
-  const owned = await db.query.conversations.findFirst({
-    where: and(eq(conversations.id, conversationId), eq(conversations.userId, userId)),
-  });
+  const owned = await findOwnedConversation(userId, conversationId);
   if (!owned) return null;
 
   const rows = await db.query.turns.findMany({
@@ -245,9 +247,7 @@ export async function getConversationTurns(
 // until a new greeting is created, so the route rejects that case before
 // this ever runs.
 export async function deleteConversation(userId: string, conversationId: string): Promise<boolean> {
-  const owned = await db.query.conversations.findFirst({
-    where: and(eq(conversations.id, conversationId), eq(conversations.userId, userId)),
-  });
+  const owned = await findOwnedConversation(userId, conversationId);
   if (!owned || owned.status === "active") return false;
 
   await db.delete(conversations).where(eq(conversations.id, conversationId));
