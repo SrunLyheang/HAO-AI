@@ -5,6 +5,37 @@ change.
 
 ## Current Phase
 
+- Dark mode (2026-09-14, user request) — **implemented**: `app/globals.css`
+  gained a `:root[data-theme="dark"]` block redefining every existing color
+  token (no new tokens, no component changed a color value directly); a
+  `Sun`/`Moon` ghost-icon toggle sits in the top-right corner cluster next
+  to the HSK picker in `components/ConversationScreen.tsx`; the choice
+  persists via the same `createPersistedPreference` pattern as
+  `zh_only_mode`/`display_support` (`localStorage` key `theme`); an inline
+  blocking `<script>` in `app/layout.tsx` applies `data-theme` before first
+  paint to avoid a light-mode flash for returning dark-mode users. This
+  reverses `ui-context.md`'s prior "light mode only, no theme switcher"
+  note — updated that doc to match. **Not yet done: manual browser check.**
+- Unit 8 second follow-up (2026-09-14, user screenshot + direct request) —
+  **implemented**: conversations can now be deleted from History (new
+  `deleteConversation` query, `DELETE /api/conversations/[id]` route, trash
+  icon per archived row — active conversation can't be deleted), the
+  "Current" row uses `--border-strong` (darker than the old
+  `--surface-sunken`) so it reads as clearly distinct, the "You"/"hao.AI
+  Tutor" turn-card labels now scale with the A-/A+ text-scale control (were
+  fixed-size before), and the user's turn text now renders at the same font
+  size/family as the AI's hero line (was visibly smaller — mismatched
+  `--font-sans` vs `--font-serif` and different rem bases). See "Completed"
+  below.
+- Unit 8 follow-up fixes (2026-09-14, per `context/feature-spec/current-issues.md`)
+  — **implemented**: the History panel's "Current" row now actually returns
+  to the live conversation (was a dead end once you'd opened an archived
+  conversation), the "Back to conversation" button is sticky and restyled,
+  "New conversation" is hidden until the user has sent a real message, it
+  shows a "Starting…" loading state while creating a new conversation, and
+  the History panel highlights the "Current" row with a gray `--surface-sunken`
+  fill. See "Completed" below for full detail. **Not yet done: manual browser
+  check** — same environment limitation as every prior unit.
 - Unit 8 (history overlay + conversation lifecycle) — **implemented**
   (2026-09-14) per `context/feature-spec/unit-8-history-conversation-lifecycle.md`.
   `db/queries.ts` gained `listConversations`/`getConversationTurns` and
@@ -41,6 +72,101 @@ change.
   environment.
 
 ## Completed
+
+- 2026-09-14 (same day, eighth follow-up): **Delete-from-history + turn-card
+  font consistency**, direct user request against a screenshot of the
+  transcript. Ran `ui-ux-pro-max:ui-styling` as instructed — this app doesn't
+  use Tailwind/shadcn (plain inline styles keyed to the CSS custom-property
+  token system in `ui-context.md`), so the fix reuses that existing system
+  rather than introducing a second styling approach for one change.
+  **Delete conversations:** new `db/queries.ts` `deleteConversation(userId,
+  conversationId)` — ownership-checked, refuses (`false`) to delete the
+  `active` conversation (there'd be nothing to fall back to and it'd violate
+  the one-active-conversation invariant), otherwise deletes the row; `turns`
+  cascade automatically via the existing `onDelete: "cascade"` FK in
+  `db/schema.ts`, no separate turns delete needed. New `DELETE` handler on
+  `app/api/conversations/[id]/route.ts` alongside the existing `GET`, same
+  401/404 shape. `components/HistoryPanel.tsx`: each row split from one
+  `<button>` into a flex row (a select `<button>` plus, for archived rows
+  only, a `Trash` icon button) — a native `window.confirm()` guards the
+  delete (no new dependency for a one-off confirmation), and a successful
+  delete just filters the row out of local state (no refetch needed).
+  **Current row darkened:** was `--surface-sunken` (`#F1F0EC`, the same tone
+  used for hover) which didn't read as distinct at rest; now
+  `--border-strong` (`#D8D7D3`), the same token the rate-switcher's active
+  segment already uses for "this one is selected" — reused, not invented.
+  **Turn-card label scaling + font-size parity fix
+  (`components/TurnCard.tsx`):** the "You" and "hao.AI Tutor · {rate}x"
+  labels were fixed-size `rem` values, not wired to `textScale` like every
+  other transcript text line — both now `calc(... * ${textScale})`. The
+  user's own turn was rendering visibly smaller than the AI's: different
+  font family (`--font-sans` vs the AI hero's `--font-serif`) and different
+  base sizes (pinyin `0.9375rem` vs AI's `1.125rem`; Hanzi `1.25rem` vs AI's
+  `clamp(2.25rem, 6vw, 3.25rem)`). User's own turn now uses the identical
+  pinyin/Hanzi font family and size as the AI hero line (still right-aligned
+  and still in its own `--surface-sunken` card, so the two roles stay
+  visually distinguishable by layout/color, not by a smaller font).
+  `npx tsc --noEmit`, `npm run lint`, `npm test` (120 tests, unchanged — pure
+  styling + one new CRUD path with no new branching logic worth its own
+  test at this scale) all green. **Not yet done:** a live browser check
+  (confirm delete removes the row and doesn't affect the active
+  conversation, confirm the darker Current row and equal-size turn text
+  visually) — same environment limitation as every other unit.
+  **Unrelated concurrent change noticed during this pass, not made by this
+  session — flagging, not fixed:** `db/queries.ts`'s `listConversations`
+  gained a `db.selectDistinct(...)` call (filtering archived conversations
+  down to ones the user actually replied to) that landed on disk mid-session
+  from outside this conversation. It broke
+  `test/queries-conversations-list.test.ts`'s second case
+  (`TypeError: db.selectDistinct is not a function` — the test's
+  `vi.mock("@/db/index")` only stubs `db.query.conversations.findMany`/
+  `db.query.turns.findFirst`, not the query-builder chain `selectDistinct`
+  needs): **120 -> 118 passing, 2 failing** as of the last `npm test` run in
+  this session. This session's own `deleteConversation` edit to the same
+  file is unaffected and still correct; the test's mock needs updating by
+  whoever owns the `selectDistinct` change, not guessed at here.
+
+- 2026-09-14 (same day, seventh follow-up): **Unit 8 UX/bug fixes from user
+  report**, per `context/feature-spec/current-issues.md`.
+  **Real bug fixed:** `components/HistoryPanel.tsx`'s `selectConversation`
+  handled the "Current" row by just calling `onOpenChange(false)` — it never
+  told `ConversationScreen` to leave `viewMode: "history"`. So opening
+  History from inside an already-loaded archived conversation and clicking
+  "Current" closed the panel but left the read-only history view on screen
+  (matches the reported "clicking...current conversations doesnt work it
+  doesnt redirect me"). Fixed by adding a new required `onGoLive: () => void`
+  prop, called instead of the no-op for the active row;
+  `components/ConversationScreen.tsx` passes `() => setViewMode("live")` —
+  reusing the exact same state transition the working "Back to conversation"
+  button already used, per the user's own "only wire it in because clicking
+  back to conversation works" instruction.
+  **Back button restyled + pinned:** the "← Back to conversation" button was
+  plain in-flow text that scrolled away with the transcript. Now wrapped in a
+  `position: sticky` bar (`top: 0`, blurred `--canvas` background,
+  `border-bottom`) directly under the main sticky header, and the button
+  itself gained a bordered `--surface` pill treatment with a Phosphor
+  `ArrowLeft` icon instead of a literal "←" character, consistent with every
+  other icon+label control in the file.
+  **"New conversation" hidden until the user has actually chatted:** new
+  `hasChatted = history.some(turn => turn.role === "user")`; the button only
+  renders once true, since only the seeded AI greeting exists on a still-empty
+  conversation and starting "another" one at that point is a no-op busywork
+  click.
+  **Loading state added:** new `newConversationPending` state, set around the
+  `POST /api/conversations` call in `startNewConversation`; the button is
+  disabled and its label swaps to "Starting…" while the request is in
+  flight (previously no feedback during the fetch).
+  **Gray shade for the current conversation in History:** the "Current" row
+  in `HistoryPanel` now gets a `--surface-sunken` background at rest (not
+  just on hover, which every row already had), so it's visually distinct
+  from the archived rows in the list without adding a new token.
+  Kept intentionally small/no new deps — this was a UI polish + one
+  navigation bug pass, not a new unit; no schema/API/type changes.
+  `npx tsc --noEmit` and `npm run lint` both clean after the change. **Not
+  yet done:** a live browser click-through (open History mid-archived-view,
+  confirm "Current" returns live; confirm the sticky back bar and gray
+  Current row render correctly) — same environment limitation as every
+  other unit's manual-check gap.
 
 - 2026-09-14 (same day, sixth follow-up): **Unit 8 implemented** per
   `context/feature-spec/unit-8-history-conversation-lifecycle.md`.

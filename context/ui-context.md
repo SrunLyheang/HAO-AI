@@ -5,8 +5,14 @@ decision the coding agent needs is in this file. The agent must not
 invent a hex value, a radius, a font, or a component pattern — it
 reads this file and uses the token.
 
-hao.AI is one screen. Light mode only. No dark theme, no theme
-switcher, no user-configurable appearance.
+hao.AI is one screen. Light mode is the default; dark mode is a
+user-toggled theme (added 2026-09-14, ghost icon button in the top-right
+corner cluster, `Sun`/`Moon` Phosphor glyphs, `localStorage`-backed like
+the other display preferences). Every color declared above is a light-mode
+value; dark equivalents live in `app/globals.css`'s `:root[data-theme="dark"]`
+block and are not repeated here — they swap 1:1 by token name, so any new UI
+that only ever reads the CSS custom property (never a raw hex) is
+dark-mode-correct automatically.
 
 ## Aesthetic
 

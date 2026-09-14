@@ -2,10 +2,13 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
+  ArrowLeft,
   ClockCounterClockwise,
   Keyboard,
+  Moon,
   PaperPlaneTilt,
   Plus,
+  Sun,
 } from "@phosphor-icons/react";
 import { UserButton } from "@clerk/nextjs";
 import type { Conversation, DisplaySupportMode, HskLevel, SpeakingRate, Turn } from "@/types";
@@ -43,6 +46,18 @@ const zhOnlyModePreference = createPersistedPreference<boolean>({
   parse: (raw) => raw === "true",
 });
 
+// Dark mode — same localStorage pattern as the other display preferences.
+// The inline script in app/layout.tsx reads this same "theme" key before
+// first paint so a returning dark-mode user never sees a light flash.
+const themePreference = createPersistedPreference<boolean>({
+  storageKey: "theme",
+  changeEvent: "theme-change",
+  fallback: false,
+  isValid: () => true,
+  parse: (raw) => raw === "dark",
+  serialize: (dark) => (dark ? "dark" : "light"),
+});
+
 // Which lines of an AI turn are shown — a display preference, stored the
 // same way as hsk_level (localStorage, before any DB write path exists).
 const DISPLAY_SUPPORT_MODES: DisplaySupportMode[] = [
@@ -68,14 +83,15 @@ const displaySupportPreference = createPersistedPreference<DisplaySupportMode>({
 // (chrome — buttons, labels, icons — stays fixed). Local-only, like hsk_level
 // before the DB write path exists.
 const TEXT_SCALES = [
-  0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.8, 2,
+  0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4,
+  1.5, 1.6, 1.8, 2,
 ] as const;
 type TextScale = (typeof TEXT_SCALES)[number];
 
 const textScalePreference = createPersistedPreference<TextScale>({
   storageKey: "text_scale",
   changeEvent: "text-scale-change",
-  fallback: 1,
+  fallback: 0.7,
   isValid: (raw) => (TEXT_SCALES as readonly number[]).includes(Number(raw)),
   parse: (raw) => Number(raw) as TextScale,
 });
@@ -133,12 +149,20 @@ export default function ConversationScreen({
   const [input, setInput] = useState("");
   const [inputMode, setInputMode] = useState<"talk" | "type">("talk");
   const [pending, setPending] = useState(false);
+  const [newConversationPending, setNewConversationPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [textScaleMessage, setTextScaleMessage] = useState<string | null>(null);
+  const textScaleMessageTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [micError, setMicError] = useState<string | null>(null);
   const zhOnlyMode = useSyncExternalStore(
     zhOnlyModePreference.subscribe,
     zhOnlyModePreference.read,
     zhOnlyModePreference.getServer,
+  );
+  const darkMode = useSyncExternalStore(
+    themePreference.subscribe,
+    themePreference.read,
+    themePreference.getServer,
   );
   // Per-AI-turn playback speed (index -> rate), default 1x. Replaces the old
   // single app-wide rate switcher (see progress-tracker.md).
@@ -183,6 +207,20 @@ export default function ConversationScreen({
       }).then(() => undefined),
     );
   }
+  function stepTextScale(direction: -1 | 1) {
+    const i = TEXT_SCALES.indexOf(textScale);
+    const nextIndex = Math.min(TEXT_SCALES.length - 1, Math.max(0, i + direction));
+    if (nextIndex === i) {
+      if (textScaleMessageTimer.current) clearTimeout(textScaleMessageTimer.current);
+      setTextScaleMessage(
+        direction === -1 ? "Smallest text size reached." : "Largest text size reached.",
+      );
+      textScaleMessageTimer.current = setTimeout(() => setTextScaleMessage(null), 2500);
+      return;
+    }
+    textScalePreference.persist(TEXT_SCALES[nextIndex]);
+  }
+
   const displaySupport = useSyncExternalStore(
     displaySupportPreference.subscribe,
     displaySupportPreference.read,
@@ -218,6 +256,16 @@ export default function ConversationScreen({
   useEffect(() => {
     lastTurnRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [history.length]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = darkMode ? "dark" : "light";
+  }, [darkMode]);
+
+  useEffect(() => {
+    return () => {
+      if (textScaleMessageTimer.current) clearTimeout(textScaleMessageTimer.current);
+    };
+  }, []);
 
   async function speak(text: string, index: number) {
     if (playingIndex !== null) return;
@@ -276,9 +324,11 @@ export default function ConversationScreen({
 
   async function startNewConversation() {
     setError(null);
+    setNewConversationPending(true);
     const res = await fetch("/api/conversations", { method: "POST" });
     if (!res.ok) {
       setError("Could not start a new conversation — try again.");
+      setNewConversationPending(false);
       return;
     }
     const data: { conversation: Conversation; turns: Turn[] } = await res.json();
@@ -286,10 +336,15 @@ export default function ConversationScreen({
     setHistory(data.turns);
     setTurnRates({});
     setPending(false);
+    setNewConversationPending(false);
     if (data.turns.length > 0) {
       void speak(data.turns[0].text_zh, 0);
     }
   }
+
+  // Only the AI's seeded greeting exists until the user actually replies —
+  // starting "another" conversation before that has happened is meaningless.
+  const hasChatted = history.some((turn) => turn.role === "user");
 
   const conversationFull = history.length >= MAX_TURNS_PER_CONVERSATION;
 
@@ -363,11 +418,7 @@ export default function ConversationScreen({
           >
             <button
               type="button"
-              onClick={() =>
-                textScalePreference.persist(
-                  TEXT_SCALES[Math.max(0, TEXT_SCALES.indexOf(textScale) - 1)],
-                )
-              }
+              onClick={() => stepTextScale(-1)}
               aria-label="Decrease Chinese text size"
               title="Decrease Chinese text size"
               style={{
@@ -382,24 +433,30 @@ export default function ConversationScreen({
             >
               A-
             </button>
+            <span
+              style={{
+                display: "flex",
+                alignItems: "center",
+                borderLeft: "1px solid var(--border)",
+                borderRight: "1px solid var(--border)",
+                padding: "var(--space-2) var(--space-2)",
+                fontFamily: "var(--font-mono)",
+                fontSize: "0.75rem",
+                color: "var(--text-secondary)",
+                minWidth: "2.75rem",
+                justifyContent: "center",
+              }}
+            >
+              {Math.round(textScale * 100)}%
+            </span>
             <button
               type="button"
-              onClick={() =>
-                textScalePreference.persist(
-                  TEXT_SCALES[
-                    Math.min(
-                      TEXT_SCALES.length - 1,
-                      TEXT_SCALES.indexOf(textScale) + 1,
-                    )
-                  ],
-                )
-              }
+              onClick={() => stepTextScale(1)}
               aria-label="Increase Chinese text size"
               title="Increase Chinese text size"
               style={{
                 background: "transparent",
                 border: "none",
-                borderLeft: "1px solid var(--border)",
                 color: "var(--ink)",
                 cursor: "pointer",
                 padding: "var(--space-2) var(--space-3)",
@@ -427,6 +484,22 @@ export default function ConversationScreen({
           <HskPicker level={hskLevel} onChange={changeHskLevel} />
           <button
             type="button"
+            onClick={() => themePreference.persist(!darkMode)}
+            aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+            title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "var(--ink)",
+              cursor: "pointer",
+              padding: "var(--space-3)",
+              borderRadius: "var(--radius-sm)",
+            }}
+          >
+            {darkMode ? <Sun weight="bold" size={22} /> : <Moon weight="bold" size={22} />}
+          </button>
+          <button
+            type="button"
             onClick={() => setHistoryOpen(true)}
             title="Conversation history"
             style={{
@@ -451,31 +524,47 @@ export default function ConversationScreen({
           setHistoryTurns(turns);
           setViewMode("history");
         }}
+        onGoLive={() => setViewMode("live")}
       />
 
       {viewMode === "history" && (
         <div
           style={{
-            maxWidth: 720,
-            margin: "0 auto",
-            padding: "0 var(--space-4)",
+            position: "sticky",
+            top: 0,
+            zIndex: 9,
+            backdropFilter: "blur(8px)",
+            background: "color-mix(in srgb, var(--canvas) 85%, transparent)",
+            borderBottom: "1px solid var(--border)",
           }}
         >
-          <button
-            type="button"
-            onClick={() => setViewMode("live")}
+          <div
             style={{
-              background: "var(--action)",
-              color: "var(--text-inverse)",
-              border: "none",
-              borderRadius: "var(--radius-sm)",
-              padding: "var(--space-2) var(--space-4)",
-              fontSize: "0.9375rem",
-              cursor: "pointer",
+              maxWidth: 720,
+              margin: "0 auto",
+              padding: "var(--space-3) var(--space-4)",
             }}
           >
-            ← Back to conversation
-          </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("live")}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "var(--space-2)",
+                background: "var(--surface)",
+                color: "var(--ink)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-sm)",
+                padding: "var(--space-2) var(--space-4)",
+                fontSize: "0.9375rem",
+                cursor: "pointer",
+              }}
+            >
+              <ArrowLeft weight="bold" size={18} />
+              Back to conversation
+            </button>
+          </div>
         </div>
       )}
 
@@ -532,6 +621,7 @@ export default function ConversationScreen({
           {error && <StatusLine variant="error">{error}</StatusLine>}
           {micError && <StatusLine variant="error">{micError}</StatusLine>}
           {speakError && <StatusLine variant="error">{speakError}</StatusLine>}
+          {textScaleMessage && <StatusLine variant="ok">{textScaleMessage}</StatusLine>}
           {viewMode === "live" && conversationFull && (
             <StatusLine variant="error">
               This conversation is full — start a new one to keep going.
@@ -656,39 +746,28 @@ export default function ConversationScreen({
               justifySelf: "end",
             }}
           >
-            <button
-              type="button"
-              onClick={() => void startNewConversation()}
-              title="New conversation"
-              style={{
-                background: "var(--action)",
-                color: "var(--text-inverse)",
-                border: "none",
-                borderRadius: "var(--radius-sm)",
-                padding: "var(--space-2) var(--space-4)",
-                fontSize: "0.9375rem",
-                cursor: "pointer",
-              }}
-            >
-              New conversation
-            </button>
-            <span title="Attach (coming soon)">
-              <button
-                type="button"
-                disabled
-                aria-disabled="true"
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "var(--text-disabled)",
-                  cursor: "not-allowed",
-                  padding: "var(--space-3)",
-                  borderRadius: "var(--radius-sm)",
-                }}
-              >
-                <Plus weight="bold" size={24} />
-              </button>
-            </span>
+            {hasChatted && (
+              <span title="New conversation">
+                <button
+                  type="button"
+                  onClick={() => void startNewConversation()}
+                  disabled={newConversationPending}
+                  aria-disabled={newConversationPending}
+                  aria-label="New conversation"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "var(--ink)",
+                    cursor: newConversationPending ? "not-allowed" : "pointer",
+                    opacity: newConversationPending ? 0.4 : 1,
+                    padding: "var(--space-3)",
+                    borderRadius: "var(--radius-sm)",
+                  }}
+                >
+                  <Plus weight="bold" size={24} />
+                </button>
+              </span>
+            )}
           </div>
         </div>
         )}

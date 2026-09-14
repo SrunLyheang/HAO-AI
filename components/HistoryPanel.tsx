@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { X } from "@phosphor-icons/react";
+import { Trash, X } from "@phosphor-icons/react";
 import type { ConversationSummary, Turn } from "@/types";
 
 type HistoryPanelProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelect: (turns: Turn[]) => void;
+  onGoLive: () => void;
 };
 
 function formatDate(createdAt: string): string {
@@ -19,7 +20,7 @@ function formatDate(createdAt: string): string {
   });
 }
 
-export default function HistoryPanel({ open, onOpenChange, onSelect }: HistoryPanelProps) {
+export default function HistoryPanel({ open, onOpenChange, onSelect, onGoLive }: HistoryPanelProps) {
   const [conversations, setConversations] = useState<ConversationSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,6 +37,7 @@ export default function HistoryPanel({ open, onOpenChange, onSelect }: HistoryPa
 
   async function selectConversation(c: ConversationSummary) {
     if (c.status === "active") {
+      onGoLive();
       onOpenChange(false);
       return;
     }
@@ -47,6 +49,16 @@ export default function HistoryPanel({ open, onOpenChange, onSelect }: HistoryPa
     const data: { turns: Turn[] } = await res.json();
     onSelect(data.turns);
     onOpenChange(false);
+  }
+
+  async function removeConversation(c: ConversationSummary) {
+    if (!window.confirm("Delete this conversation? This can't be undone.")) return;
+    const res = await fetch(`/api/conversations/${c.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      setError("Could not delete that conversation — try again.");
+      return;
+    }
+    setConversations((prev) => prev?.filter((row) => row.id !== c.id) ?? prev);
   }
 
   const sorted = conversations
@@ -128,44 +140,78 @@ export default function HistoryPanel({ open, onOpenChange, onSelect }: HistoryPa
             )}
             {!error &&
               sorted?.map((c) => (
-                <button
+                <div
                   key={c.id}
-                  type="button"
-                  onClick={() => void selectConversation(c)}
                   style={{
-                    display: "block",
-                    width: "100%",
-                    textAlign: "left",
-                    background: "transparent",
-                    border: "none",
+                    display: "flex",
+                    alignItems: "stretch",
+                    background: c.status === "active" ? "var(--border-strong)" : "transparent",
                     borderBottom: "1px solid var(--border)",
-                    padding: "var(--space-4)",
-                    cursor: "pointer",
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-sunken)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 >
-                  <div
+                  <button
+                    type="button"
+                    onClick={() => void selectConversation(c)}
                     style={{
-                      fontFamily: "var(--font-mono)",
-                      fontSize: "0.8125rem",
-                      color: "var(--text-secondary)",
-                      marginBottom: "var(--space-1)",
+                      display: "block",
+                      flex: 1,
+                      minWidth: 0,
+                      textAlign: "left",
+                      background: "transparent",
+                      border: "none",
+                      padding: "var(--space-4)",
+                      cursor: "pointer",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (c.status !== "active") e.currentTarget.style.background = "var(--surface-sunken)";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (c.status !== "active") e.currentTarget.style.background = "transparent";
                     }}
                   >
-                    {c.status === "active" ? "Current" : formatDate(c.createdAt)}
-                  </div>
-                  <div
-                    style={{
-                      color: "var(--text)",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {c.preview}
-                  </div>
-                </button>
+                    <div
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        fontSize: "0.8125rem",
+                        fontWeight: c.status === "active" ? 600 : 400,
+                        color: c.status === "active" ? "var(--ink)" : "var(--text-secondary)",
+                        marginBottom: "var(--space-1)",
+                      }}
+                    >
+                      {c.status === "active" ? "Current" : formatDate(c.createdAt)}
+                    </div>
+                    <div
+                      style={{
+                        color: "var(--text)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {c.preview}
+                    </div>
+                  </button>
+                  {c.status !== "active" && (
+                    <button
+                      type="button"
+                      onClick={() => void removeConversation(c)}
+                      aria-label="Delete conversation"
+                      title="Delete conversation"
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "var(--text-muted)",
+                        cursor: "pointer",
+                        padding: "var(--space-4)",
+                        flexShrink: 0,
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = "var(--err-text)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+                    >
+                      <Trash weight="bold" size={18} />
+                    </button>
+                  )}
+                </div>
               ))}
           </div>
         </Dialog.Content>

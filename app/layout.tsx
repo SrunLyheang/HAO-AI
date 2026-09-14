@@ -34,6 +34,17 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         lang="en"
         className={`${newsreader.variable} ${geistSans.variable} ${geistMono.variable}`}
       >
+        <head>
+          {/* Sets data-theme before first paint so a returning dark-mode
+              user never sees a light flash (theme preference lives in
+              localStorage, read again post-hydration by preference-store). */}
+          <script
+            dangerouslySetInnerHTML={{
+              __html:
+                "try{if(localStorage.getItem('theme')==='dark')document.documentElement.dataset.theme='dark'}catch(e){}",
+            }}
+          />
+        </head>
         <body>{children}</body>
       </html>
     </ClerkProvider>

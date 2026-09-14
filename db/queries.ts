@@ -200,8 +200,19 @@ export async function listConversations(userId: string): Promise<ConversationSum
     orderBy: desc(conversations.createdAt),
   });
 
+  const userTurnRows = await db
+    .selectDistinct({ conversationId: turns.conversationId })
+    .from(turns)
+    .where(and(eq(turns.userId, userId), eq(turns.role, "user")));
+  const conversationsWithUserTurn = new Set(userTurnRows.map((r) => r.conversationId));
+
+  // Archived conversations the user never actually replied to (just the
+  // greeting) aren't real history — the active conversation always shows
+  // regardless, since it's the live session, not a past one.
+  const relevant = rows.filter((row) => row.status === "active" || conversationsWithUserTurn.has(row.id));
+
   const summaries = await Promise.all(
-    rows.map(async (row) => {
+    relevant.map(async (row) => {
       const firstTurn = await db.query.turns.findFirst({
         where: and(eq(turns.conversationId, row.id), eq(turns.userId, userId)),
         orderBy: asc(turns.seq),
@@ -227,6 +238,20 @@ export async function getConversationTurns(
     orderBy: asc(turns.seq),
   });
   return rows.map(toTurn);
+}
+
+// Archived conversations only — deleting the active one would violate the
+// one-active-conversation invariant and there'd be nothing to fall back to
+// until a new greeting is created, so the route rejects that case before
+// this ever runs.
+export async function deleteConversation(userId: string, conversationId: string): Promise<boolean> {
+  const owned = await db.query.conversations.findFirst({
+    where: and(eq(conversations.id, conversationId), eq(conversations.userId, userId)),
+  });
+  if (!owned || owned.status === "active") return false;
+
+  await db.delete(conversations).where(eq(conversations.id, conversationId));
+  return true;
 }
 
 export async function getSettings(userId: string): Promise<{ hskLevel: HskLevel }> {

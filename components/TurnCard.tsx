@@ -48,13 +48,21 @@ const TurnCard = forwardRef<HTMLDivElement, TurnCardProps>(function TurnCard(
             <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--text-muted)" }}>
               {time}
             </span>
-            <span style={{ fontSize: "0.9375rem", fontWeight: 600, color: "var(--text-secondary)" }}>You</span>
+            <span
+              style={{
+                fontSize: `calc(0.9375rem * ${textScale})`,
+                fontWeight: 600,
+                color: "var(--text-secondary)",
+              }}
+            >
+              You
+            </span>
           </div>
           <p
             style={{
-              fontFamily: "var(--font-sans)",
+              fontFamily: "var(--font-mono)",
               color: "var(--text-secondary)",
-              fontSize: `calc(0.9375rem * ${textScale})`,
+              fontSize: `calc(1.125rem * ${textScale})`,
               textAlign: "right",
             }}
           >
@@ -62,9 +70,11 @@ const TurnCard = forwardRef<HTMLDivElement, TurnCardProps>(function TurnCard(
           </p>
           <p
             style={{
-              fontFamily: "var(--font-sans)",
+              fontFamily: "var(--font-serif)",
               color: "var(--ink)",
-              fontSize: `calc(1.25rem * ${textScale})`,
+              fontSize: `calc(clamp(2.25rem, 6vw, 3.25rem) * ${textScale})`,
+              lineHeight: 1.15,
+              letterSpacing: "-0.02em",
               textAlign: "right",
             }}
           >
@@ -112,7 +122,7 @@ const TurnCard = forwardRef<HTMLDivElement, TurnCardProps>(function TurnCard(
           </span>
           <span
             style={{
-              fontSize: "0.8125rem",
+              fontSize: `calc(0.8125rem * ${textScale})`,
               fontWeight: 600,
               color: "var(--text-secondary)",
               textTransform: "uppercase",
