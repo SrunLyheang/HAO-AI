@@ -115,7 +115,10 @@ export const usageLog = pgTable(
     route: text("route").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("usage_log_user_created_idx").on(t.userId, t.createdAt)],
+  (t) => [
+    index("usage_log_user_created_idx").on(t.userId, t.createdAt),
+    index("usage_log_created_idx").on(t.createdAt),
+  ],
 );
 ```
 
@@ -123,9 +126,11 @@ export const usageLog = pgTable(
   `architecture.md`'s literal column type. Holds `"transcribe"`, `"chat"`,
   or `"speak"`, one row per provider call, so it also gives free per-route
   auditing without a separate mechanism.
-- One composite index on `(userId, createdAt)`, since every query filters
-  by both — satisfies architecture.md's "indexed" note on both columns
-  without two separate indexes.
+- Composite index on `(userId, createdAt)` for the per-user window counts
+  `reserveUsage` runs on every call. A second, `createdAt`-leading index
+  backs `cleanupExpiredUsage()`'s global sweep (`DELETE ... WHERE
+  created_at < now() - 24h`, no `userId` filter) — the composite index
+  can't serve that query since `createdAt` isn't its leading column.
 
 ### 2. Migration (new, generated)
 
@@ -168,12 +173,18 @@ export async function cleanupExpiredUsage(): Promise<void>;
 - Sliding windows (row `createdAt >= now - 60s` / `now - 24h`), not
   fixed-calendar buckets — matches architecture.md's "row-count windows"
   description.
-- **No accepted race window:** unlike a plain read-then-act check, the
-  count-and-insert in `reserveUsage` is one serialized/conditional
-  database action (e.g. a single `INSERT ... SELECT` guarded by a
-  `WHERE` count subquery, or an explicit transaction with
-  `SELECT ... FOR UPDATE` on the user's bucket), so two concurrent
-  requests cannot both pass and both land a row over the stated cap.
+- **No accepted race window:** unlike a plain read-then-act check,
+  `reserveUsage` serializes concurrent reservations for the same user with
+  a Postgres advisory lock (`pg_advisory_xact_lock(hashtext(userId))`,
+  held for the transaction) before counting and inserting — not a
+  conditional `INSERT ... SELECT` count subquery or `SELECT ... FOR
+  UPDATE`, since both of those lock/gate against existing `usage_log`
+  rows and do nothing for a user who has none yet (a first-ever call, or
+  one right after `cleanupExpiredUsage()` clears their rows), leaving the
+  count-then-insert race open exactly when it matters. The advisory lock
+  is keyed to the user regardless of whether any row exists, so two
+  concurrent requests for the same user always serialize; requests from
+  different users never contend.
 
 ### Retention
 
