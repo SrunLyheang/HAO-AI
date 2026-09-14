@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   ClockCounterClockwise,
   Keyboard,
+  Microphone,
   Moon,
   PaperPlaneTilt,
   Plus,
@@ -98,6 +99,9 @@ const textScalePreference = createPersistedPreference<TextScale>({
 
 // Per-turn "sent at" time, display-only (mirrors the mockup's timestamps).
 // Now sourced from each turn's persisted createdAt (Unit 7c).
+// toLocaleTimeString resolves the server's default locale/timezone during
+// SSR, which can differ from the browser's — callers must gate this behind
+// a mounted check so the SSR/hydration pass renders a stable placeholder.
 function formatTurnTime(createdAt: string): string {
   return new Date(createdAt).toLocaleTimeString([], {
     hour: "2-digit",
@@ -141,6 +145,14 @@ export default function ConversationScreen({
   conversation: activeConversation,
   initialTurns,
 }: ConversationScreenProps) {
+  // Same hydration-safe pattern as the preference stores above: server
+  // snapshot is always false, so formatTurnTime's locale-dependent output
+  // (see comment on that function) is deferred until after hydration.
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
   const [history, setHistory] = useState<Turn[]>(initialTurns);
   const [conversationId, setConversationId] = useState(activeConversation.id);
   const [viewMode, setViewMode] = useState<"live" | "history">("live");
@@ -229,6 +241,21 @@ export default function ConversationScreen({
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastTurnRef = useRef<HTMLDivElement | null>(null);
+  const footerRef = useRef<HTMLDivElement | null>(null);
+  const [footerHeight, setFooterHeight] = useState(0);
+
+  // The fixed footer's height varies (error/Thinking… status lines stack
+  // above the input row), so the scroll padding below it must track that —
+  // a hardcoded value leaves the latest message hidden behind a taller footer.
+  useEffect(() => {
+    const footer = footerRef.current;
+    if (!footer) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setFooterHeight(entry.contentRect.height);
+    });
+    observer.observe(footer);
+    return () => observer.disconnect();
+  }, []);
 
   // Revoke-after-playback point (architecture.md's TTS object URL lifecycle).
   useEffect(() => {
@@ -255,7 +282,7 @@ export default function ConversationScreen({
 
   useEffect(() => {
     lastTurnRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [history.length]);
+  }, [history.length, footerHeight]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = darkMode ? "dark" : "light";
@@ -572,7 +599,7 @@ export default function ConversationScreen({
         style={{
           maxWidth: 720,
           margin: "0 auto",
-          padding: `var(--space-4) var(--space-4) calc(var(--space-16) + var(--space-16))`,
+          padding: `var(--space-4) var(--space-4) calc(${footerHeight}px + var(--space-4))`,
           display: "flex",
           flexDirection: "column",
           gap: "var(--space-12)",
@@ -584,8 +611,9 @@ export default function ConversationScreen({
             <TurnCard
               key={i}
               ref={isLast ? lastTurnRef : undefined}
+              style={isLast ? { scrollMarginBottom: `calc(${footerHeight}px + var(--space-4))` } : undefined}
               turn={turn}
-              time={formatTurnTime(turn.createdAt)}
+              time={mounted ? formatTurnTime(turn.createdAt) : ""}
               textScale={textScale}
               displaySupport={displaySupport}
               rate={turnRates[i] ?? 1}
@@ -601,6 +629,7 @@ export default function ConversationScreen({
       </div>
 
       <div
+        ref={footerRef}
         style={{
           position: "fixed",
           insetInline: 0,
@@ -673,7 +702,11 @@ export default function ConversationScreen({
                 inputMode === "talk" ? "Switch to typing" : "Switch to talking"
               }
             >
-              <Keyboard weight="bold" size={24} />
+              {inputMode === "talk" ? (
+                <Keyboard weight="bold" size={24} />
+              ) : (
+                <Microphone weight="bold" size={24} />
+              )}
             </button>
           </div>
 
@@ -707,7 +740,7 @@ export default function ConversationScreen({
                       void send(input);
                     }
                   }}
-                  placeholder="用中文写一句话…"
+                  placeholder="Type in Chinese…"
                   style={{
                     flex: 1,
                     background: "var(--surface)",

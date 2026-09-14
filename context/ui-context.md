@@ -12,7 +12,11 @@ the other display preferences). Every color declared above is a light-mode
 value; dark equivalents live in `app/globals.css`'s `:root[data-theme="dark"]`
 block and are not repeated here — they swap 1:1 by token name, so any new UI
 that only ever reads the CSS custom property (never a raw hex) is
-dark-mode-correct automatically.
+dark-mode-correct automatically. **Exception:** `--brand-accent`,
+`--brand-accent-hover`, and `--brand-accent-text` are not redefined in the
+dark block — the wordmark mark and the "Easy Fix" tag keep their light-mode
+values in both themes, since the accent is sourced from `app/icon.svg` and
+is not meant to shift with the surrounding theme.
 
 ## Aesthetic
 

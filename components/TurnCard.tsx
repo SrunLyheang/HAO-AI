@@ -1,4 +1,4 @@
-import { forwardRef } from "react";
+import { forwardRef, type CSSProperties } from "react";
 import { Info, SpeakerHigh } from "@phosphor-icons/react";
 import type { DisplaySupportMode, SpeakingRate, Turn } from "@/types";
 import { toPinyin } from "@/lib/pinyin";
@@ -7,6 +7,7 @@ import CorrectionDisclosure from "@/components/CorrectionDisclosure";
 type TurnCardProps = {
   turn: Turn;
   time: string;
+  style?: CSSProperties;
   textScale: number;
   displaySupport: DisplaySupportMode;
   rate: SpeakingRate;
@@ -20,12 +21,12 @@ type TurnCardProps = {
 // so rendering rules (display-support branching, rate buttons) live in one
 // place, independent of the conversation orchestration around it.
 const TurnCard = forwardRef<HTMLDivElement, TurnCardProps>(function TurnCard(
-  { turn, time, textScale, displaySupport, rate, speakingRates, onPlay, onRateChange, playbackDisabled },
+  { turn, time, textScale, displaySupport, rate, speakingRates, onPlay, onRateChange, playbackDisabled, style },
   ref,
 ) {
   if (turn.role === "user") {
     return (
-      <div ref={ref} className="turn-in" style={{ display: "flex", justifyContent: "flex-end" }}>
+      <div ref={ref} className="turn-in" style={{ display: "flex", justifyContent: "flex-end", ...style }}>
         <div
           style={{
             maxWidth: "85%",
@@ -95,6 +96,7 @@ const TurnCard = forwardRef<HTMLDivElement, TurnCardProps>(function TurnCard(
         borderRadius: "var(--radius-lg)",
         padding: "var(--space-6)",
         boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+        ...style,
       }}
     >
       <div

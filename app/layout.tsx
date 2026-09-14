@@ -33,6 +33,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <html
         lang="en"
         className={`${newsreader.variable} ${geistSans.variable} ${geistMono.variable}`}
+        suppressHydrationWarning
       >
         <head>
           {/* Sets data-theme before first paint so a returning dark-mode

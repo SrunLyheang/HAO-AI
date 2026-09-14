@@ -9,10 +9,8 @@
 > prepaid, not dashboard-capped.
 >
 > **Prerequisite: Unit 8 must be implemented and verified first**, per
-> `ai-workflow-rules.md` §1.2's strict build order. As of this draft, Unit 8
-> is **not yet implemented** — no `app/api/conversations/`, no
-> `HistoryPanel.tsx` exist in the repo. This spec can be reviewed now, but
-> do not start the code until Unit 8's done criteria are met.
+> `ai-workflow-rules.md` §1.2's strict build order. `app/api/conversations/`
+> and `components/HistoryPanel.tsx` now exist in the repo.
 >
 > **Already done, out of this unit's scope:** the "Input caps" half of
 > Unit 9's original title. `app/api/transcribe/validate.ts` already enforces
@@ -61,9 +59,9 @@
 
 ## One sentence
 
-Add a `usage_log` table and `lib/ratelimit.ts` (`isRateLimited`,
-`recordUsage`), gate `app/api/transcribe`, `app/api/chat`, and
-`app/api/speak` behind it (all three check and record, at
+Add a `usage_log` table and `lib/ratelimit.ts` (`reserveUsage`,
+`cleanupExpiredUsage`), gate `app/api/transcribe`, `app/api/chat`, and
+`app/api/speak` behind it (all three reserve atomically, at
 `MINUTE_LIMIT = 30` / `DAY_LIMIT = 300` so a 3-call voice turn still gets
 10/minute), and hand the user a manual checklist for setting
 Groq/ElevenLabs billing caps and confirming the DeepSeek prepaid balance
@@ -146,49 +144,64 @@ const DAY_LIMIT = 300;
 const MINUTE_MS = 60_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Counts usage_log rows for userId in the last 60s and last 24h
-// (combined across all routes — one shared bucket). Returns true if
-// either window is already at its limit. Called by all three routes
-// (transcribe, chat, speak) before their provider call.
-export async function isRateLimited(userId: string): Promise<boolean>;
+// Atomically checks the caller's shared bucket against MINUTE_LIMIT/
+// DAY_LIMIT and, if under both, inserts a usage_log row (route: one of
+// "transcribe" | "chat" | "speak") for this call — the check and the
+// insert happen as one serialized/conditional database action, so two
+// concurrent requests cannot both observe "under the limit" and both
+// insert. Returns true if the reservation succeeded (caller proceeds to
+// its provider call); false if either window was already at its limit
+// (caller returns 429, no row written). Called by all three routes
+// (transcribe, chat, speak) in place of their provider call's
+// check-then-call.
+export async function reserveUsage(userId: string, route: "transcribe" | "chat" | "speak"): Promise<boolean>;
 
-// Inserts one usage_log row (route: one of "transcribe" | "chat" | "speak")
-// and, in the same db.batch() call, deletes any of the user's rows older
-// than 24h (the "opportunistic cleanup on write" architecture.md
-// describes — no cron, table stays small under the caps' own math).
-// Called by all three routes, after isRateLimited() returns false and
-// before that route's own provider call.
-export async function recordUsage(userId: string, route: "transcribe" | "chat" | "speak"): Promise<void>;
+// Deletes usage_log rows older than 24h. Runs opportunistically inside
+// reserveUsage's own transaction on every call (keeps the per-write
+// cleanup architecture.md describes — no separate query on the hot
+// path), and is also invoked on a scheduled job (see "Retention" below)
+// so a user who stops calling the routes doesn't leave stale rows
+// sitting past the 24h window indefinitely.
+export async function cleanupExpiredUsage(): Promise<void>;
 ```
 
 - Sliding windows (row `createdAt >= now - 60s` / `now - 24h`), not
   fixed-calendar buckets — matches architecture.md's "row-count windows"
-  description and the existing `getOrCreateActiveConversation`/
-  `createConversationWithGreeting` precedent of doing a plain read-then-act
-  rather than a locking transaction.
-- **Accepted race window:** two concurrent requests can both read a count
-  just under the limit and both pass, landing one row over the stated cap
-  in the rare case. No additional locking or transaction is added for
-  this — same tolerance already accepted in `db/queries.ts`'s own comment
-  on `createConversationWithGreeting` ("can at worst skip pruning one
-  extra row on a rare concurrent double-create"). Low-stakes: a single-user
-  race can cost at most one extra provider call.
+  description.
+- **No accepted race window:** unlike a plain read-then-act check, the
+  count-and-insert in `reserveUsage` is one serialized/conditional
+  database action (e.g. a single `INSERT ... SELECT` guarded by a
+  `WHERE` count subquery, or an explicit transaction with
+  `SELECT ... FOR UPDATE` on the user's bucket), so two concurrent
+  requests cannot both pass and both land a row over the stated cap.
+
+### Retention
+
+Per-write cleanup (deleting the calling user's own rows older than 24h)
+happens inside `reserveUsage`'s transaction, same as before. That alone
+only prunes a user's rows when *that user* makes another request, so a
+user who stops calling the routes leaves their rows past the 24h window
+until they return. To bound total table growth for inactive users too,
+a scheduled job (a cron-triggered route, or a Neon-scheduled query — see
+`ai-workflow-rules.md` §5.4 for how a scheduled job is set up) runs
+`cleanupExpiredUsage()` periodically (e.g. hourly) to delete `usage_log`
+rows older than 24h **for all users**, not just the one making the next
+request.
 
 ### 4. `app/api/transcribe/route.ts` (edit)
 
-Insert a check-and-record after `parseTranscribeForm` succeeds and before
+Insert a reservation after `parseTranscribeForm` succeeds and before
 `transcribeAudio`:
 
 ```ts
-if (await isRateLimited(userId)) {
-  return NextResponse.json({ error: "Slow down — try again in a moment." }, { status: 429 });
+if (!(await reserveUsage(userId, "transcribe"))) {
+  return NextResponse.json({ error: "Rate limit reached; try again later." }, { status: 429 });
 }
-await recordUsage(userId, "transcribe");
 ```
 
 ### 5. `app/api/chat/route.ts` (edit)
 
-Insert the check-and-record immediately before the `callDeepSeek` call
+Insert the reservation immediately before the `callDeepSeek` call
 (after the existing `existingTurns`/`countTurns` 25-cap check, which stays
 exactly where it is — smallest diff, and it means a request rejected as
 "Conversation is full" never spends a rate-limit slot; that path is
@@ -196,13 +209,12 @@ unreachable through the real UI once Unit 8 ships, since the client
 already disables input at 25 turns):
 
 ```ts
-if (await isRateLimited(userId)) {
-  return NextResponse.json({ error: "Slow down — try again in a moment." }, { status: 429 });
+if (!(await reserveUsage(userId, "chat"))) {
+  return NextResponse.json({ error: "Rate limit reached; try again later." }, { status: 429 });
 }
-await recordUsage(userId, "chat");
 ```
 
-The row is recorded **before** the DeepSeek call, not after a successful
+The row is reserved **before** the DeepSeek call, not after a successful
 reply — so a client retry-storm, a DeepSeek timeout, or the existing
 malformed-JSON retry all still spend the slot they reserved. This matches
 architecture.md's "on pass it records a row" ordering and is the
@@ -211,14 +223,13 @@ call for free.
 
 ### 6. `app/api/speak/route.ts` (edit)
 
-Insert a check-and-record after `parseSpeakRequest` succeeds and before
+Insert a reservation after `parseSpeakRequest` succeeds and before
 `synthesizeSpeech`:
 
 ```ts
-if (await isRateLimited(userId)) {
-  return NextResponse.json({ error: "Slow down — try again in a moment." }, { status: 429 });
+if (!(await reserveUsage(userId, "speak"))) {
+  return NextResponse.json({ error: "Rate limit reached; try again later." }, { status: 429 });
 }
-await recordUsage(userId, "speak");
 ```
 
 Recording here (not just checking) is what closes the loop-forever hole:
@@ -250,7 +261,7 @@ any dashboard:
 - Per-route independent buckets — rejected explicitly (see "Confirmed by
   the user" above); do not build a `route`-filtered count. (The `route`
   column is still recorded on every row for auditing — see schema note
-  above — but `isRateLimited`'s count query never filters by it.)
+  above — but `reserveUsage`'s count query never filters by it.)
 - Any UI beyond the existing generic error string. `429`'s `{ error }`
   message renders through the same `error`/`speakError` state slots
   `components/ConversationScreen.tsx` already has (lines rendering
@@ -270,10 +281,11 @@ any dashboard:
 |------|--------|
 | `db/schema.ts` | edit — add `usageLog` table + composite index |
 | `drizzle/000X_*.sql` | new — generated migration, applied and verified |
-| `lib/ratelimit.ts` | new — `isRateLimited`, `recordUsage` |
-| `app/api/transcribe/route.ts` | edit — check + record, before `transcribeAudio` |
-| `app/api/chat/route.ts` | edit — check + record, before `callDeepSeek` |
-| `app/api/speak/route.ts` | edit — check + record, before `synthesizeSpeech` |
+| `lib/ratelimit.ts` | new — `reserveUsage`, `cleanupExpiredUsage` |
+| `app/api/transcribe/route.ts` | edit — reserve, before `transcribeAudio` |
+| `app/api/chat/route.ts` | edit — reserve, before `callDeepSeek` |
+| `app/api/speak/route.ts` | edit — reserve, before `synthesizeSpeech` |
+| A scheduled job (cron route or Neon-scheduled query) | new — calls `cleanupExpiredUsage()` periodically for all users |
 | `architecture.md` | edit — correct the "Rate check" section per above |
 
 ## Tests (`test/`)
@@ -284,43 +296,51 @@ Mock the Drizzle `db` calls `lib/ratelimit.ts` makes (same mocking seam as
 `test/queries-conversations.test.ts`). Boundary-exact per this unit's own
 done criteria:
 
-- 29 rows in the last 60s → `isRateLimited` returns `false`.
-- 30 rows in the last 60s → `isRateLimited` returns `true` (the 31st call
-  in a minute is blocked).
-- 299 rows in the last 24h (and under the minute limit) → `false`.
-- 300 rows in the last 24h → `true` (the 301st call in a day is blocked).
+- 29 rows in the last 60s → `reserveUsage` returns `true` and writes a row.
+- 30 rows in the last 60s → `reserveUsage` returns `false` and writes no
+  row (the 31st call in a minute is blocked).
+- 299 rows in the last 24h (and under the minute limit) → `true`.
+- 300 rows in the last 24h → `false` (the 301st call in a day is blocked).
 - A count made only of rows older than 24h → treated as 0 for both
   windows (proves the window filter, not just a raw row count).
-- `recordUsage(userId, "speak")` issues one insert (`route: "speak"`) and
-  one delete (`createdAt` older than 24h) in a single `db.batch()` call;
-  same shape asserted for `"transcribe"` and `"chat"`.
+- Two concurrent `reserveUsage` calls at 29 rows in the last 60s both
+  resolve, but only one inserts a row and returns `true`; the other sees
+  30 and returns `false` — proves the check-and-insert is atomic, not a
+  read-then-act race.
+- `reserveUsage(userId, "speak")` issues one conditional insert
+  (`route: "speak"`) and, within the same transaction/batch, one delete
+  (`createdAt` older than 24h); same shape asserted for `"transcribe"`
+  and `"chat"`.
+- `cleanupExpiredUsage()` deletes rows older than 24h across multiple
+  users, not just one caller's `userId`.
 
 ### `test/chat-ratelimit.test.ts` (new)
 
-Mock `lib/ratelimit.ts`'s `isRateLimited` to return `true` and assert
-`POST /api/chat` returns `429` with no call to `callDeepSeek`, no call to
-`appendTurnPair`, and no call to `recordUsage`. Mirrors the existing
-`auth-guard`/`conversations-ownership` test shape (mock the boundary,
-assert nothing downstream ran).
+Mock `lib/ratelimit.ts`'s `reserveUsage` to return `false` and assert
+`POST /api/chat` returns `429` with no call to `callDeepSeek` and no call
+to `appendTurnPair`. Mirrors the existing `auth-guard`/
+`conversations-ownership` test shape (mock the boundary, assert nothing
+downstream ran).
 
 ### `test/transcribe-ratelimit.test.ts` (new)
 
-Same pattern: `isRateLimited` mocked `true` → `429`, `transcribeAudio`
-and `recordUsage` never called.
+Same pattern: `reserveUsage` mocked `false` → `429`, `transcribeAudio`
+never called.
 
 ### `test/speak-ratelimit.test.ts` (new)
 
-Same pattern: `isRateLimited` mocked `true` → `429`, `synthesizeSpeech`
-and `recordUsage` never called.
+Same pattern: `reserveUsage` mocked `false` → `429`, `synthesizeSpeech`
+never called.
 
 ### Manual check (record in `progress-tracker.md`)
 
 Temporarily lower `MINUTE_LIMIT` (e.g. to 2) in a local run, send several
 turns in quick succession: the request that exceeds the limit gets a
-`429` and the existing error `StatusLine` renders the "slow down" message
-with no DeepSeek/Groq/ElevenLabs call made (confirm via provider dashboard
-usage or added temporary logging, then remove it). Confirm a normal-paced
-conversation (well under 10/minute) is never affected.
+`429` and the existing error `StatusLine` renders the "rate limit
+reached" message with no DeepSeek/Groq/ElevenLabs call made (confirm via
+provider dashboard usage or added temporary logging, then remove it).
+Confirm a normal-paced conversation (well under 10/minute) is never
+affected.
 
 ## Done criteria (`build-spec.md` Unit 9, provider names corrected)
 
@@ -330,10 +350,11 @@ conversation (well under 10/minute) is never affected.
    call in a minute or the 301st in a day is blocked. Verified by
    `test/ratelimit.test.ts`'s boundary cases and the manual check.
 2. Every one of `transcribe`, `chat`, `speak` refuses to call its provider
-   when `isRateLimited` is true (`test/*-ratelimit.test.ts`).
-3. All three routes write a `usage_log` row on pass, tagged with their own
-   `route` value (confirmed by code review and `test/ratelimit.test.ts`'s
-   `recordUsage` assertions for all three route values).
+   when `reserveUsage` returns `false` (`test/*-ratelimit.test.ts`).
+3. All three routes write a `usage_log` row on a successful reservation,
+   tagged with their own `route` value (confirmed by code review and
+   `test/ratelimit.test.ts`'s `reserveUsage` assertions for all three
+   route values), and no row is written on a failed reservation.
 4. "Groq and ElevenLabs each have a confirmed hard spending cap; DeepSeek
    balance is low and prepaid." — the checklist above is handed to the
    user; this unit's code is not done pending their dashboard action, but

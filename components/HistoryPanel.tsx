@@ -23,6 +23,7 @@ function formatDate(createdAt: string): string {
 export default function HistoryPanel({ open, onOpenChange, onSelect, onGoLive }: HistoryPanelProps) {
   const [conversations, setConversations] = useState<ConversationSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -53,12 +54,17 @@ export default function HistoryPanel({ open, onOpenChange, onSelect, onGoLive }:
 
   async function removeConversation(c: ConversationSummary) {
     if (!window.confirm("Delete this conversation? This can't be undone.")) return;
-    const res = await fetch(`/api/conversations/${c.id}`, { method: "DELETE" });
-    if (!res.ok) {
-      setError("Could not delete that conversation — try again.");
-      return;
+    setMutationError(null);
+    try {
+      const res = await fetch(`/api/conversations/${c.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        setMutationError("Could not delete that conversation — try again.");
+        return;
+      }
+      setConversations((prev) => prev?.filter((row) => row.id !== c.id) ?? prev);
+    } catch {
+      setMutationError("Could not delete that conversation — try again.");
     }
-    setConversations((prev) => prev?.filter((row) => row.id !== c.id) ?? prev);
   }
 
   const sorted = conversations
@@ -126,6 +132,9 @@ export default function HistoryPanel({ open, onOpenChange, onSelect, onGoLive }:
           <div style={{ overflowY: "auto", flex: 1 }}>
             {error && (
               <div style={{ padding: "var(--space-4)", color: "var(--err-text)" }}>{error}</div>
+            )}
+            {!error && mutationError && (
+              <div style={{ padding: "var(--space-4)", color: "var(--err-text)" }}>{mutationError}</div>
             )}
             {!error && sorted && sorted.length === 0 && (
               <div
