@@ -5,6 +5,21 @@ change.
 
 ## Current Phase
 
+- Unit 9 spec (rate limiting + spend guard) — **still DRAFT, not implemented**.
+  Two review findings against
+  `context/feature-spec/unit-9-rate-limiting-spend-guard.md` fixed in the doc
+  itself (2026-09-14): (1) the `usage_log` schema section now specifies a
+  second, `createdAt`-leading index alongside the existing `(userId,
+  createdAt)` one, since `cleanupExpiredUsage()`'s global sweep (no `userId`
+  filter) can't use a composite index whose leading column is `userId`; (2)
+  `reserveUsage`'s concurrency design now specifies a per-user Postgres
+  advisory lock (`pg_advisory_xact_lock(hashtext(userId))`) instead of a
+  conditional `INSERT ... SELECT` count subquery or `SELECT ... FOR UPDATE`
+  — the latter two only lock/gate against rows that already exist, so a
+  user with zero `usage_log` rows (first-ever call, or right after cleanup)
+  had no row to lock and the count-then-insert race stayed open exactly
+  when it mattered. No code exists for this unit yet — these are
+  spec-only fixes; still awaiting approval before implementation starts.
 - Dark mode (2026-09-14, user request) — **implemented**: `app/globals.css`
   gained a `:root[data-theme="dark"]` block redefining every existing color
   token (no new tokens, no component changed a color value directly); a
