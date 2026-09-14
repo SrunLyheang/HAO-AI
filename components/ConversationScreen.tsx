@@ -288,6 +288,9 @@ export default function ConversationScreen({
     <main style={{ position: "relative", minHeight: "100dvh" }}>
       <div
         style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 10,
           display: "flex",
           flexWrap: "wrap",
           alignItems: "center",
@@ -295,6 +298,7 @@ export default function ConversationScreen({
           rowGap: "var(--space-2)",
           columnGap: "var(--space-4)",
           padding: "var(--space-4)",
+          background: "var(--canvas)",
         }}
       >
         <div
