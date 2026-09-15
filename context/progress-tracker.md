@@ -23,21 +23,12 @@ change.
   `build-spec.md`'s Unit 10 row and done criteria were updated in the same
   change to point at it. **DRAFT — awaiting approval before any sub-unit is
   implemented.**
-- Unit 9 spec (rate limiting + spend guard) — **still DRAFT, not implemented**.
-  Two review findings against
-  `context/feature-spec/unit-9-rate-limiting-spend-guard.md` fixed in the doc
-  itself (2026-09-14): (1) the `usage_log` schema section now specifies a
-  second, `createdAt`-leading index alongside the existing `(userId,
-  createdAt)` one, since `cleanupExpiredUsage()`'s global sweep (no `userId`
-  filter) can't use a composite index whose leading column is `userId`; (2)
-  `reserveUsage`'s concurrency design now specifies a per-user Postgres
-  advisory lock (`pg_advisory_xact_lock(hashtext(userId))`) instead of a
-  conditional `INSERT ... SELECT` count subquery or `SELECT ... FOR UPDATE`
-  — the latter two only lock/gate against rows that already exist, so a
-  user with zero `usage_log` rows (first-ever call, or right after cleanup)
-  had no row to lock and the count-then-insert race stayed open exactly
-  when it mattered. No code exists for this unit yet — these are
-  spec-only fixes; still awaiting approval before implementation starts.
+- Unit 9 (rate limiting + spend guard) — **implemented** (2026-09-15) per
+  `context/feature-spec/unit-9-rate-limiting-spend-guard.md`, on the user's
+  explicit go-ahead to implement the approved spec. See "Completed" below
+  for full detail. **Not yet done:** the two-item manual provider-dashboard
+  checklist (Groq/ElevenLabs spend caps, DeepSeek balance) — handed to the
+  user, cannot be done from code per `ai-workflow-rules.md` §5.4.
 - Dark mode (2026-09-14, user request) — **implemented**: `app/globals.css`
   gained a `:root[data-theme="dark"]` block redefining every existing color
   token (no new tokens, no component changed a color value directly); a
@@ -105,6 +96,101 @@ change.
   environment.
 
 ## Completed
+
+- 2026-09-15: **Unit 9 implemented** per
+  `context/feature-spec/unit-9-rate-limiting-spend-guard.md`.
+  **Schema + migration:** `db/schema.ts` gained `usageLog` (`id`, `userId`,
+  `route`, `createdAt`, plus the spec's two indexes — `(userId, createdAt)`
+  for `reserveUsage`'s per-user window counts and a `createdAt`-leading one
+  for `cleanupExpiredUsage()`'s global sweep). `npx drizzle-kit generate`
+  produced `drizzle/0004_chunky_silk_fever.sql`, byte-matching the spec's
+  schema exactly. **Migration apply note:** `drizzle-kit migrate` hung
+  indefinitely in this environment — it needs a websocket connection to
+  Neon and this sandbox's network only allows plain HTTPS (the same
+  `@neondatabase/serverless` HTTP driver every other query in this app
+  already uses worked fine). Applied the migration's DDL directly over that
+  HTTP connection instead, then verified via `information_schema` that
+  `usage_log` and both indexes exist on the real database — this repo's
+  `__drizzle_migrations` journal table was already missing entries for
+  0002/0003 for the same apparent reason (pre-existing, not caused here),
+  so this isn't a new gap.
+  **`lib/ratelimit.ts` (new):** `reserveUsage`/`cleanupExpiredUsage`. One
+  real constraint the spec didn't anticipate: this project's Drizzle driver
+  is `neon-http`, whose `db.transaction()` unconditionally throws ("No
+  transactions support in neon-http driver" — confirmed by reading
+  `node_modules/drizzle-orm/neon-http/session.cjs`); `db.batch()` is the
+  only atomic primitive (already the pattern `db/queries.ts` uses). Built
+  `reserveUsage` as one `db.batch()` of three `db.execute(sql\`...\`)`
+  statements: (1) `pg_advisory_xact_lock(hashtext(userId)::bigint)`, (2) a
+  conditional `INSERT ... SELECT ... WHERE` (minute-window count) `< 30 AND`
+  (day-window count) `< 300 RETURNING id`, (3) the per-write 24h cleanup
+  delete. This
+  still closes the race the spec's advisory-lock requirement calls for:
+  Neon's HTTP batch runs each item as a separate statement inside one real
+  Postgres transaction, and under the default READ COMMITTED isolation
+  each statement takes its own fresh snapshot — so item 2 only takes its
+  snapshot *after* item 1 finishes blocking on the lock, meaning it always
+  sees rows any just-committed concurrent transaction already inserted.
+  (A single combined SQL statement wouldn't have this property — Postgres
+  fixes one snapshot per statement at the start, before it waits on any
+  lock inside it — which is why this is three `db.batch()` items, not one.)
+  **Routes:** `app/api/transcribe/route.ts`, `app/api/chat/route.ts`, and
+  `app/api/speak/route.ts` each gained a `reserveUsage(userId, route)`
+  check (429 `"Rate limit reached; try again later."` on failure) at the
+  exact insertion points the spec named — transcribe/speak before their
+  provider call, chat after the existing 25-turn check but before
+  `callDeepSeek`.
+  **Retention:** new `app/api/cron/cleanup-usage/route.ts` (bearer-token
+  guarded via a new `CRON_SECRET` env var, added to `.env.example` per
+  `ai-workflow-rules.md` §5.6) and a new `vercel.json` scheduling it hourly
+  — the one route in the app with no `requireUser()` call, since it has no
+  end-user session.
+  **Docs:** `architecture.md`'s "Rate check" bullet, its stack table's
+  "Rate limiting" row, and invariant 6 all corrected from the old
+  10/minute-100/day per-route wording to the shared-bucket 30/minute,
+  300/day design, per the spec's required same-change correction
+  (`ai-workflow-rules.md` §6.2).
+  **Tests:** `test/ratelimit.test.ts` (all of this unit's own boundary
+  cases: 29-vs-30 in the last 60s, 299-vs-300 in the last 24h, the
+  lock->conditional-insert->cleanup shape per route, `cleanupExpiredUsage`
+  not scoped to one user) plus `test/chat-ratelimit.test.ts`,
+  `test/transcribe-ratelimit.test.ts`, `test/speak-ratelimit.test.ts`
+  (each: `reserveUsage` mocked `false` -> 429, provider function never
+  called). **Existing tests fixed as a required side effect:**
+  `test/auth-guard.test.ts` and `test/chat-conversation.test.ts` didn't mock
+  `@/lib/ratelimit`, so importing the now-`lib/ratelimit.ts`-importing
+  routes tried to construct a real `neon()` client with no `DATABASE_URL`
+  in the test environment and threw; both gained the same
+  `vi.mock("@/lib/ratelimit", ...)` seam the new rate-limit test files use.
+  **Manual verification:** no real browser/mic session is possible from
+  this environment (same limitation as every prior unit), so ran a scripted
+  equivalent directly against the real Neon database instead — 32
+  `reserveUsage` calls for a synthetic `unit9_manual_check_user`, confirming
+  the 31st (not the 30th or 32nd) is the first rejected, then confirmed
+  `cleanupExpiredUsage()` runs cleanly and doesn't prune the 30 fresh rows,
+  then deleted all synthetic rows so no test data was left in the real
+  table. `npx tsc --noEmit`, `npm run lint`, `npm run build` (route table
+  now lists `/api/cron/cleanup-usage`), and `npm test` all green for this
+  unit's own files.
+  **Not fixed, pre-existing and out of this unit's scope:**
+  `test/queries-conversations-list.test.ts`'s 2 failures
+  (`db.selectDistinct is not a function`) — already flagged in this file's
+  2026-09-14 entry as an unrelated concurrent change, unchanged by this
+  session. **Also noticed, not made by this session — a live concurrent
+  edit, not a one-time drop:** by the end of this session, `git status`
+  showed `context/feature-spec/build-spec.md` modified, the old
+  `unit-10-hardening-production-readiness.md` deleted, and eight new files
+  (`unit-10a-failure-state-ui-sweep.md` through `unit-10h-concurrency-
+  backup-testing.md`) — a Unit 10 restructure actively landing on disk from
+  outside this conversation while Unit 9 was being implemented. None of it
+  was read, touched, staged, or reverted here; it's outside Unit 9's scope
+  and this file's own commit (see "Current Goal") deliberately stages only
+  Unit 9's files so the other session's in-progress work isn't caught up in
+  it.
+  **Handed to the user, per the spec's own checklist (not code-doable):**
+  set a hard monthly spend cap in the Groq console for `GROQ_API_KEY`; set
+  one in the ElevenLabs account for `ELEVENLABS_API_KEY`; confirm the
+  DeepSeek account balance is prepaid and kept low.
 
 - 2026-09-14 (same day, eighth follow-up): **Delete-from-history + turn-card
   font consistency**, direct user request against a screenshot of the
@@ -1428,6 +1514,18 @@ route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → 
   `context/feature-spec/unit-6-auth-clerk.md` (item 8 + Open Questions) and
   `ui-context.md`'s corner-controls layout diagram and description to match.
   Unit 6's spec now has no unresolved open questions.
+- 2026-09-15: **Unit 10 split into 10a–10h**, matching the 7a/7b/7c
+  precedent — the combined `unit-10-hardening-production-readiness.md`
+  (2026-09-15 audit) covered seven unrelated concerns in one file; it's
+  deleted and replaced by `unit-10a-failure-state-ui-sweep.md` through
+  `unit-10h-concurrency-backup-testing.md`, each self-contained with its own
+  status/review gate. Two content decisions resolved during the split: 10d
+  (conversation-history pagination) is closed as deferred — skip for now,
+  the 50-conversation cap already bounds the response, revisit only if that
+  cap is ever raised; 10b (provider call timeouts) ships a conservative 15s
+  default for DeepSeek/Groq/ElevenLabs rather than blocking on real p99
+  latency research, to be tightened once real data exists. `build-spec.md`'s
+  Unit 10 row was repointed to the 8 new files in the same change.
 
 ## Session Notes
 

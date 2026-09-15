@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { callDeepSeek, type ChatMessage } from "@/lib/deepseek";
 import { toPinyin } from "@/lib/pinyin";
 import { requireUserOrResponse } from "@/lib/auth";
+import { reserveUsage } from "@/lib/ratelimit";
 import { appendTurnPair, ConversationNotFoundError, countTurns } from "@/db/queries";
 import type { HskLevel, Turn } from "@/types";
 import { parseChatRequest, parseChatResponse } from "./validate";
@@ -52,6 +53,10 @@ export async function POST(req: Request) {
   const existingTurns = await countTurns(userId, parsed.conversationId);
   if (existingTurns >= MAX_TURNS_PER_CONVERSATION) {
     return NextResponse.json({ error: "Conversation is full" }, { status: 400 });
+  }
+
+  if (!(await reserveUsage(userId, "chat"))) {
+    return NextResponse.json({ error: "Rate limit reached; try again later." }, { status: 429 });
   }
 
   const messages = toChatMessages(parsed.history, parsed.message, parsed.hskLevel);

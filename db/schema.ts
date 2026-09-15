@@ -38,3 +38,17 @@ export const turns = pgTable("turns", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   seq: bigserial("seq", { mode: "bigint" }).notNull(),
 });
+
+export const usageLog = pgTable(
+  "usage_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id").notNull(),
+    route: text("route").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("usage_log_user_created_idx").on(t.userId, t.createdAt),
+    index("usage_log_created_idx").on(t.createdAt),
+  ],
+);

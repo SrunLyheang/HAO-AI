@@ -20,7 +20,7 @@
 | Text-to-speech | ElevenLabs (`eleven_multilingual_v2`) | Converts `reply_zh` to spoken audio at natural speed; the client applies its own playback-rate multiplier (0.75x/1x/1.5x) afterward via `HTMLAudioElement.playbackRate` — ElevenLabs' own speed param is too narrow (hard-limited 0.7-1.2) for that range. Called only from `app/api/speak`. Switched from Azure Neural TTS on 2026-09-11 — Azure AI Speech isn't available in the user's country. Groq was ruled out first: its only TTS models don't support Mandarin at all. |
 | Audio capture | Web Audio API + `MediaRecorder` | Press-and-hold recording; `AnalyserNode` drives the mic-button ring animation. |
 | Audio playback | `HTMLAudioElement` | Plays TTS audio from a transient object URL. |
-| Rate limiting | Postgres `usage_log` table (row-count windows) | Per-user 10/minute and 100/day checks before any provider call. |
+| Rate limiting | Postgres `usage_log` table (row-count windows) | Per-user 30/minute and 300/day checks (one shared bucket across all three provider-calling routes) before any provider call. |
 | Secrets | Vercel environment variables | All provider keys; server-only, never `NEXT_PUBLIC_*`. |
 
 ## System boundaries
@@ -104,7 +104,7 @@ There is no object store. User audio recordings are never written anywhere; they
 - **Structured output.** `app/api/chat` requests JSON from DeepSeek and validates the parsed object against the `ChatResponse` type. On malformed JSON it retries once; a second failure returns a `502` and no turn is persisted.
 - **No streaming.** Replies are delivered whole. TTS is a single non-streaming request.
 - **System prompt assembly.** `lib/hsk.ts` returns the cumulative word list for the selected level. `app/api/chat` composes the prompt as a fixed prefix (persona + rules + word list) followed by the per-conversation transcript, so the prefix is byte-identical across turns and DeepSeek prompt caching applies.
-- **Rate check.** Before calls 1 and 2, the route makes no provider call until `lib/ratelimit.ts` confirms the user is under 10 rows in `usage_log` in the last minute and 100 in the last day for that route class; on pass it records a `usage_log` row.
+- **Rate check.** Before calls 1, 2, and 3 (transcribe, chat, speak), the route makes no provider call until `lib/ratelimit.ts` confirms the user has fewer than 30 `usage_log` rows in the last minute and 300 in the last day, counted across all routes combined (one shared bucket per user, not per route). All three routes record a row on pass, one row per provider call. The limits are set to 3x the turn-level target (10/minute, 100/day) so that a voice turn — transcribe + chat + speak, three calls — still allows the full 10 voice turns per minute; a typed turn (chat + speak, two calls) allows up to 15 per minute.
 
 ## Invariants
 
@@ -113,7 +113,7 @@ There is no object store. User audio recordings are never written anywhere; they
 3. **Every database access is scoped by `user_id`.** No function in `db/queries.ts` accepts a row `id` without also requiring the owning `user_id` in the same `where` clause. Cross-user reads are impossible by construction, not by convention.
 4. **User audio is never persisted.** Recorded audio is not written to the database, disk, Vercel storage, or any third-party store. It exists only as the streamed body of a single request to the transcription API and is discarded when that request completes.
 5. **Pinyin is always computed, never model-supplied.** Pinyin displayed to the user is produced by `pinyin-pro` from the model's Chinese text. The model is never asked for pinyin and any pinyin in model output is ignored.
-6. **No provider call before limits pass.** A call to DeepSeek, Groq, or ElevenLabs is made only after the request has cleared the per-user rate check (10/minute, 100/day) and the input-size caps (audio ≤ 60 s and ≤ 1 MB; text ≤ 500 characters).
+6. **No provider call before limits pass.** A call to DeepSeek, Groq, or ElevenLabs is made only after the request has cleared the per-user rate check (30/minute, 300/day, shared across all three routes) and the input-size caps (audio ≤ 60 s and ≤ 1 MB; text ≤ 500 characters).
 7. **Model output is inert.** Model-generated text is never passed to `dangerouslySetInnerHTML`, `eval`, a shell command, a SQL string, or a filesystem path. It is only rendered as escaped text and stored as parameterized values.
 8. **The system-prompt prefix is stable within a conversation.** The persona, rules, and HSK word list are assembled in a fixed order and are byte-identical across every turn of a conversation, so DeepSeek prompt caching is not defeated.
 9. **Conversation length is bounded.** A conversation never holds more than 25 turns; the server rejects the request that would create the 26th and instructs the client to start a new conversation.

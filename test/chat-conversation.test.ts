@@ -8,6 +8,9 @@ vi.mock("@clerk/nextjs/server", () => ({
 vi.mock("@/lib/deepseek", () => ({
   callDeepSeek: vi.fn(),
 }));
+vi.mock("@/lib/ratelimit", () => ({
+  reserveUsage: vi.fn(),
+}));
 vi.mock("@/db/queries", () => ({
   countTurns: vi.fn(),
   appendTurnPair: vi.fn(),
@@ -15,10 +18,12 @@ vi.mock("@/db/queries", () => ({
 
 import { auth } from "@clerk/nextjs/server";
 import { callDeepSeek } from "@/lib/deepseek";
+import { reserveUsage } from "@/lib/ratelimit";
 import { appendTurnPair, countTurns } from "@/db/queries";
 
 const mockAuth = vi.mocked(auth);
 const mockCallDeepSeek = vi.mocked(callDeepSeek);
+const mockReserveUsage = vi.mocked(reserveUsage);
 const mockCountTurns = vi.mocked(countTurns);
 const mockAppendTurnPair = vi.mocked(appendTurnPair);
 
@@ -33,6 +38,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockAuth.mockResolvedValue({ userId: "user_123" } as never);
   mockCountTurns.mockResolvedValue(0);
+  mockReserveUsage.mockResolvedValue(true);
   mockCallDeepSeek.mockResolvedValue(
     JSON.stringify({ reply_zh: "你好！", reply_en: "Hello!", correction: "" }),
   );
