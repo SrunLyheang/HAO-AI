@@ -20,9 +20,8 @@ export async function callDeepSeek(messages: ChatMessage[]): Promise<string> {
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  let res: Response;
   try {
-    res = await fetch(`${BASE_URL}/chat/completions`, {
+    const res = await fetch(`${BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -36,6 +35,16 @@ export async function callDeepSeek(messages: ChatMessage[]): Promise<string> {
       }),
       signal: controller.signal,
     });
+    if (!res.ok) {
+      throw new Error(`DeepSeek request failed: ${res.status} ${res.statusText}`);
+    }
+    const data: unknown = await res.json();
+    const content = (data as { choices?: { message?: { content?: unknown } }[] })
+      ?.choices?.[0]?.message?.content;
+    if (typeof content !== "string" || content.length === 0) {
+      throw new Error("DeepSeek response had no message content");
+    }
+    return content;
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
       throw new Error("DeepSeek request timed out");
@@ -44,18 +53,6 @@ export async function callDeepSeek(messages: ChatMessage[]): Promise<string> {
   } finally {
     clearTimeout(timeout);
   }
-
-  if (!res.ok) {
-    throw new Error(`DeepSeek request failed: ${res.status} ${res.statusText}`);
-  }
-
-  const data: unknown = await res.json();
-  const content = (data as { choices?: { message?: { content?: unknown } }[] })
-    ?.choices?.[0]?.message?.content;
-  if (typeof content !== "string" || content.length === 0) {
-    throw new Error("DeepSeek response had no message content");
-  }
-  return content;
 }
 
 /**

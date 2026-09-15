@@ -53,15 +53,20 @@ export default function HistoryPanel({ open, onOpenChange, onSelect, onGoLive }:
     }
     if (pendingId) return;
     setPendingId(c.id);
-    const res = await fetch(`/api/conversations/${c.id}`);
-    setPendingId(null);
-    if (!res.ok) {
+    try {
+      const res = await fetch(`/api/conversations/${c.id}`);
+      if (!res.ok) {
+        setError("Could not load that conversation — try again.");
+        return;
+      }
+      const data: { turns: Turn[] } = await res.json();
+      onSelect(data.turns);
+      onOpenChange(false);
+    } catch {
       setError("Could not load that conversation — try again.");
-      return;
+    } finally {
+      setPendingId(null);
     }
-    const data: { turns: Turn[] } = await res.json();
-    onSelect(data.turns);
-    onOpenChange(false);
   }
 
   async function removeConversation(c: ConversationSummary) {

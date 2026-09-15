@@ -7,6 +7,11 @@ import { getAuthAppearance } from "@/components/auth/clerk-appearance";
 import { themePreference } from "@/components/preference-store";
 
 export default function SignUpPage() {
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
   const darkMode = useSyncExternalStore(
     themePreference.subscribe,
     themePreference.read,
@@ -18,7 +23,7 @@ export default function SignUpPage() {
       heading="Create your hao.AI account"
       subheading="Start practicing spoken Mandarin in minutes."
     >
-      <SignUp appearance={getAuthAppearance(darkMode)} />
+      {mounted ? <SignUp appearance={getAuthAppearance(darkMode)} /> : null}
     </AuthShell>
   );
 }

@@ -33,9 +33,8 @@ export async function synthesizeSpeech(text: string): Promise<ArrayBuffer> {
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  let res: Response;
   try {
-    res = await fetch(
+    const res = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
       {
         method: "POST",
@@ -48,6 +47,10 @@ export async function synthesizeSpeech(text: string): Promise<ArrayBuffer> {
         signal: controller.signal,
       },
     );
+    if (!res.ok) {
+      throw new Error(`ElevenLabs TTS request failed: ${res.status} ${res.statusText}`);
+    }
+    return await res.arrayBuffer();
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
       throw new Error("ElevenLabs TTS request timed out");
@@ -56,10 +59,4 @@ export async function synthesizeSpeech(text: string): Promise<ArrayBuffer> {
   } finally {
     clearTimeout(timeout);
   }
-
-  if (!res.ok) {
-    throw new Error(`ElevenLabs TTS request failed: ${res.status} ${res.statusText}`);
-  }
-
-  return res.arrayBuffer();
 }
