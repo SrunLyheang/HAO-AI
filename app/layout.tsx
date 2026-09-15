@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Newsreader, Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ui } from "@clerk/ui";
 import "./globals.css";
@@ -38,8 +39,14 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <head>
           {/* Sets data-theme before first paint so a returning dark-mode
               user never sees a light flash (theme preference lives in
-              localStorage, read again post-hydration by preference-store). */}
-          <script
+              localStorage, read again post-hydration by preference-store).
+              next/script's beforeInteractive strategy (not a raw <script>)
+              avoids React 19's "script tag never executes on the client"
+              warning — this one only ever needs to run from the initial
+              server-rendered HTML, never react to a client re-render. */}
+          <Script
+            id="theme-preload"
+            strategy="beforeInteractive"
             dangerouslySetInnerHTML={{
               __html:
                 "try{if(localStorage.getItem('theme')==='dark')document.documentElement.dataset.theme='dark'}catch(e){}",

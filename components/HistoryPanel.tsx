@@ -197,7 +197,7 @@ export default function HistoryPanel({ open, onOpenChange, onSelect, onGoLive }:
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {c.preview}
+                      {c.title ?? c.preview}
                     </div>
                   </button>
                   {c.status !== "active" && (

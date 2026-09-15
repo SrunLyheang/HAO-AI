@@ -12,11 +12,24 @@ const {
   const findFirstConversations = vi.fn();
   const findManyTurns = vi.fn();
   const selectWhere = vi.fn();
-  const insertValues = vi.fn((values: unknown) => ({ marker: "insert", values }));
+  const insertValues = vi.fn((values: unknown) => ({
+    marker: "insert",
+    values,
+  }));
   const updateWhere = vi.fn(() => ({ marker: "update" }));
   const deleteWhere = vi.fn(() => ({ marker: "delete" }));
-  const batch = vi.fn(async (queries: unknown[]) => queries.map(() => undefined));
-  return { findFirstConversations, findManyTurns, selectWhere, insertValues, updateWhere, deleteWhere, batch };
+  const batch = vi.fn(async (queries: unknown[]) =>
+    queries.map(() => undefined),
+  );
+  return {
+    findFirstConversations,
+    findManyTurns,
+    selectWhere,
+    insertValues,
+    updateWhere,
+    deleteWhere,
+    batch,
+  };
 });
 
 vi.mock("@/db/index", () => ({
@@ -97,11 +110,37 @@ describe("getOrCreateActiveConversation", () => {
 
     expect(result.conversation.status).toBe("active");
     expect(result.turns).toHaveLength(1);
-    expect(result.turns[0]).toMatchObject({ role: "ai", text_zh: "你好！今天想聊什么？" });
+    expect(result.turns[0]).toMatchObject({
+      role: "ai",
+      text_zh: "你好！今天想聊什么？",
+    });
     expect(batch).toHaveBeenCalledTimes(1);
     // archive-previous-active, insert-conversation, insert-greeting-turn — no
     // delete, since the cap has not been reached.
     expect(batch.mock.calls[0][0]).toHaveLength(3);
+  });
+
+  it("re-reads the active conversation after a unique active-row conflict", async () => {
+    findFirstConversations
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({
+        id: "conv_1",
+        userId: "user_1",
+        status: "active",
+        createdAt: new Date("2026-01-01T00:00:00Z"),
+      });
+    selectWhere.mockResolvedValue([{ value: 0 }]);
+    batch.mockRejectedValueOnce({
+      code: "23505",
+      constraint: "conversations_one_active_per_user",
+    });
+    findManyTurns.mockResolvedValue([]);
+
+    const result = await getOrCreateActiveConversation("user_1");
+
+    expect(result.conversation.id).toBe("conv_1");
+    expect(result.turns).toEqual([]);
+    expect(findFirstConversations).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -111,11 +150,15 @@ describe("50-conversation retention cap", () => {
     // creation path — the query-level way to exercise the cap per the
     // grilling session's Decision #2 (no live UI trigger exists yet).
     findFirstConversations.mockImplementation((arg: { orderBy?: unknown }) =>
-      arg?.orderBy ? Promise.resolve({ id: "oldest_conv" }) : Promise.resolve(undefined),
+      arg?.orderBy
+        ? Promise.resolve({ id: "oldest_conv" })
+        : Promise.resolve(undefined),
     );
 
     let totalConversations = 0;
-    selectWhere.mockImplementation(() => Promise.resolve([{ value: totalConversations }]));
+    selectWhere.mockImplementation(() =>
+      Promise.resolve([{ value: totalConversations }]),
+    );
 
     for (let i = 0; i < 51; i++) {
       await getOrCreateActiveConversation("user_1");
@@ -142,13 +185,22 @@ describe("appendTurnPair", () => {
       "user_1",
       "conv_1",
       { text_zh: "你好" },
-      { text_zh: "你好！", pinyin: "nǐ hǎo", text_en: "Hello!", correction: "", correctionPinyin: "" },
+      {
+        text_zh: "你好！",
+        pinyin: "nǐ hǎo",
+        text_en: "Hello!",
+        correction: "",
+        correctionPinyin: "",
+      },
     );
 
     expect(batch).toHaveBeenCalledTimes(1);
     expect(insertValues).toHaveBeenCalledTimes(2);
     for (const call of insertValues.mock.calls) {
-      expect(call[0]).toMatchObject({ userId: "user_1", conversationId: "conv_1" });
+      expect(call[0]).toMatchObject({
+        userId: "user_1",
+        conversationId: "conv_1",
+      });
     }
     expect(aiTurn).toMatchObject({ role: "ai", text_zh: "你好！" });
   });
@@ -156,7 +208,11 @@ describe("appendTurnPair", () => {
 
 describe("findOwnedConversation", () => {
   it("returns the conversation when it belongs to the given user", async () => {
-    findFirstConversations.mockResolvedValue({ id: "conv_1", userId: "user_1", status: "active" });
+    findFirstConversations.mockResolvedValue({
+      id: "conv_1",
+      userId: "user_1",
+      status: "active",
+    });
 
     const result = await findOwnedConversation("user_1", "conv_1");
 
@@ -173,8 +229,11 @@ describe("findOwnedConversation", () => {
 });
 
 describe("countTurns", () => {
-  it.each([0, 1, 25])("returns %i for a conversation with %i turns", async (n) => {
-    selectWhere.mockResolvedValue([{ value: n }]);
-    expect(await countTurns("user_1", "conv_1")).toBe(n);
-  });
+  it.each([0, 1, 25])(
+    "returns %i for a conversation with %i turns",
+    async (n) => {
+      selectWhere.mockResolvedValue([{ value: n }]);
+      expect(await countTurns("user_1", "conv_1")).toBe(n);
+    },
+  );
 });

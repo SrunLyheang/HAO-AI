@@ -43,3 +43,27 @@ export async function callDeepSeek(messages: ChatMessage[]): Promise<string> {
   }
   return content;
 }
+
+/**
+ * Summarizes a conversation's opening user message into a short English
+ * title for the history list. Throws on any failure — callers treat this as
+ * best-effort and fall back to the raw message preview.
+ */
+export async function generateConversationTitle(userMessage: string): Promise<string> {
+  const raw = await callDeepSeek([
+    {
+      role: "system",
+      content:
+        "Summarize the topic of the user's message in 3-5 English words, " +
+        "for a chat history list title. No punctuation, no quotes. " +
+        'Respond as JSON: {"title": "..."}.',
+    },
+    { role: "user", content: userMessage },
+  ]);
+  const parsed: unknown = JSON.parse(raw);
+  const title = (parsed as { title?: unknown } | null)?.title;
+  if (typeof title !== "string" || title.trim().length === 0) {
+    throw new Error("DeepSeek title response had no title");
+  }
+  return title.trim().slice(0, 60);
+}

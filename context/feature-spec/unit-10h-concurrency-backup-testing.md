@@ -9,8 +9,19 @@
 
 ## One sentence
 
-Add one concurrency test for the write paths that aren't already covered,
-and confirm Neon's backup/restore actually works before relying on it.
+Confirm Neon's backup/restore actually works before relying on it. The
+concurrency test below is deferred (see "Decision").
+
+## Decision (resolved 2026-09-15)
+
+**Concurrency test deferred, not dropped.** At current single-user scale
+the `getOrCreateActiveConversation` race is low-probability and no bug
+report has surfaced it — not worth the test/retry-logic cost right now.
+Revisit if a second concurrent-request source appears (e.g. multiple
+devices/tabs for the same user) or a real race is ever observed. The
+backup-restore drill below is unaffected by this and should still happen —
+it's a one-time manual check, not code, and data loss is irreversible
+regardless of scale.
 
 ## Evidence
 
@@ -30,25 +41,25 @@ and confirm Neon's backup/restore actually works before relying on it.
 
 ## In scope
 
-1. One new test exercising `getOrCreateActiveConversation`'s concurrent-race
-   behavior — does the DB-level unique constraint
-   (`conversations_one_active_per_user`, already in `db/schema.ts`) actually
-   prevent two simultaneously-created "active" rows for the same user, or
-   does the application code need a retry-on-conflict path? Write the test
-   first, per `superpowers:test-driven-development`, to find out which is
-   true before deciding whether code changes are needed.
-2. A manual backup-restore drill against the real Neon project (not a
+1. A manual backup-restore drill against the real Neon project (not a
    code change): trigger a Neon point-in-time restore to a branch, confirm
    data comes back intact, record the result and the steps taken in
    `progress-tracker.md`. This is dashboard/infra verification, not
    application code — per `ai-workflow-rules.md` §5.4, give the user the
    exact steps rather than attempting it from application code.
 
+## Deferred — revisit if a real race shows up
+
+- A concurrency test for `getOrCreateActiveConversation` (two simultaneous
+  calls for a user with no active conversation yet, racing to create one —
+  `grep`-checked `test/` and found no such case) and, if it fails, retry-on-
+  conflict handling in that function. Not built now per the Decision above.
+
 ## Out of scope
 
-Load testing / stress testing beyond the one concurrency case above — not
-requested, and this app's usage scale doesn't currently justify a dedicated
-load-test harness.
+Load testing / stress testing beyond the deferred concurrency case above —
+not requested, and this app's usage scale doesn't currently justify a
+dedicated load-test harness.
 
 ## Suggested order
 
