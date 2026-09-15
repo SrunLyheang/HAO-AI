@@ -24,11 +24,20 @@ export default function HistoryPanel({ open, onOpenChange, onSelect, onGoLive }:
   const [conversations, setConversations] = useState<ConversationSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
+  // Guards selectConversation/removeConversation against a double-click
+  // firing overlapping requests — same pattern as ConversationScreen's
+  // "New conversation" pending guard.
+  const [pendingId, setPendingId] = useState<string | null>(null);
 
+  // No separate "loading" state — derived below as `conversations === null`
+  // (still true on the very first open, before any fetch resolves).
   useEffect(() => {
     if (!open) return;
     fetch("/api/conversations")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error("history fetch failed");
+        return r.json();
+      })
       .then((data: { conversations: ConversationSummary[] }) => {
         setConversations(data.conversations);
         setError(null);
@@ -42,7 +51,10 @@ export default function HistoryPanel({ open, onOpenChange, onSelect, onGoLive }:
       onOpenChange(false);
       return;
     }
+    if (pendingId) return;
+    setPendingId(c.id);
     const res = await fetch(`/api/conversations/${c.id}`);
+    setPendingId(null);
     if (!res.ok) {
       setError("Could not load that conversation — try again.");
       return;
@@ -53,8 +65,10 @@ export default function HistoryPanel({ open, onOpenChange, onSelect, onGoLive }:
   }
 
   async function removeConversation(c: ConversationSummary) {
+    if (pendingId) return;
     if (!window.confirm("Delete this conversation? This can't be undone.")) return;
     setMutationError(null);
+    setPendingId(c.id);
     try {
       const res = await fetch(`/api/conversations/${c.id}`, { method: "DELETE" });
       if (!res.ok) {
@@ -64,12 +78,15 @@ export default function HistoryPanel({ open, onOpenChange, onSelect, onGoLive }:
       setConversations((prev) => prev?.filter((row) => row.id !== c.id) ?? prev);
     } catch {
       setMutationError("Could not delete that conversation — try again.");
+    } finally {
+      setPendingId(null);
     }
   }
 
   const sorted = conversations
     ? [...conversations].sort((a, b) => (a.status === "active" ? -1 : b.status === "active" ? 1 : 0))
     : null;
+  const loading = conversations === null && !error;
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -130,13 +147,24 @@ export default function HistoryPanel({ open, onOpenChange, onSelect, onGoLive }:
           </div>
 
           <div style={{ overflowY: "auto", flex: 1 }}>
+            {loading && !error && (
+              <div
+                style={{
+                  padding: "var(--space-8) var(--space-4)",
+                  textAlign: "center",
+                  color: "var(--text-muted)",
+                }}
+              >
+                Loading…
+              </div>
+            )}
             {error && (
               <div style={{ padding: "var(--space-4)", color: "var(--err-text)" }}>{error}</div>
             )}
             {!error && mutationError && (
               <div style={{ padding: "var(--space-4)", color: "var(--err-text)" }}>{mutationError}</div>
             )}
-            {!error && sorted && sorted.length === 0 && (
+            {!loading && !error && sorted && sorted.length === 0 && (
               <div
                 style={{
                   padding: "var(--space-8) var(--space-4)",
@@ -147,7 +175,8 @@ export default function HistoryPanel({ open, onOpenChange, onSelect, onGoLive }:
                 No past conversations yet.
               </div>
             )}
-            {!error &&
+            {!loading &&
+              !error &&
               sorted?.map((c) => (
                 <div
                   key={c.id}
@@ -161,6 +190,8 @@ export default function HistoryPanel({ open, onOpenChange, onSelect, onGoLive }:
                   <button
                     type="button"
                     onClick={() => void selectConversation(c)}
+                    disabled={pendingId !== null}
+                    aria-disabled={pendingId !== null}
                     style={{
                       display: "block",
                       flex: 1,
@@ -169,7 +200,8 @@ export default function HistoryPanel({ open, onOpenChange, onSelect, onGoLive }:
                       background: "transparent",
                       border: "none",
                       padding: "var(--space-4)",
-                      cursor: "pointer",
+                      cursor: pendingId !== null ? "not-allowed" : "pointer",
+                      opacity: pendingId !== null && pendingId !== c.id ? 0.5 : 1,
                     }}
                     onMouseEnter={(e) => {
                       if (c.status !== "active") e.currentTarget.style.background = "var(--surface-sunken)";
@@ -204,13 +236,16 @@ export default function HistoryPanel({ open, onOpenChange, onSelect, onGoLive }:
                     <button
                       type="button"
                       onClick={() => void removeConversation(c)}
+                      disabled={pendingId !== null}
+                      aria-disabled={pendingId !== null}
                       aria-label="Delete conversation"
                       title="Delete conversation"
                       style={{
                         background: "transparent",
                         border: "none",
                         color: "var(--text-muted)",
-                        cursor: "pointer",
+                        cursor: pendingId !== null ? "not-allowed" : "pointer",
+                        opacity: pendingId !== null && pendingId !== c.id ? 0.5 : 1,
                         padding: "var(--space-4)",
                         flexShrink: 0,
                       }}

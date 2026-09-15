@@ -3,7 +3,121 @@
 Update this file after every meaningful implementation
 change.
 
+## Status (source of truth — check this first)
+
+Everything below this table is a chronological narrative log, kept as
+history/context. It is **not** kept in sync — per-entry caveats like
+"not yet done: manual browser check" get copy-pasted forward and go stale
+once the check actually happens. Only this table reflects current status;
+update it whenever a unit's status changes.
+
+| Unit | Status | Notes |
+|---|---|---|
+| 0a — Local skeleton | ✅ Done | committed `96fc49b` |
+| 0b — Deploy pipeline | ⏸ Deferred | blocked on user: Vercel project, env vars, Deployment Protection. Revisit once Units 1-9 are done, before Unit 10 ship (see "Deferred" below) |
+| 1 — Text conversation loop | ✅ Done | verified live, committed `7c7ebd9` |
+| 2 — HSK level control | 🟡 Implemented, unverified | automated checks (build/lint/test/curl) pass; manual browser check + commit still pending |
+| 3 — Voice input (STT) | 🟡 Implemented, unverified | automated checks pass; manual browser check (hold-to-record, mic-deny, 60s cap) + commit still pending |
+| 4 — Voice output (TTS) | 🟡 Implemented, unverified | automated checks pass; manual browser check (autoplay, replay, rate switch) + commit still pending |
+| 5 — One-screen + Siri mic | 🟡 Implemented, unverified | automated checks pass; manual browser check (real mic/provider round trip) + commit still pending |
+| 6 — Auth (Clerk) | ✅ Done | re-verified 2026-09-14, live browser flows exercised |
+| 7a — DB schema | ✅ Done | committed, migrations applied to real Neon DB |
+| 7b — Settings persistence | ✅ Done | committed, 98/98 tests pass |
+| 7c — Conversation persistence | 🟡 Implemented, unverified | automated checks pass; full signed-in reload/cross-profile walkthrough not done |
+| 8 — History + conversation lifecycle | 🟡 Implemented, unverified | base implementation + several user-reported follow-up fixes all landed; manual browser check still pending |
+| 9 — Rate limiting + spend guard | 🟡 Implemented, partially verified | scripted verification against real Neon DB done; 3-item manual provider-dashboard checklist (Groq/ElevenLabs/DeepSeek spend caps) handed to user, not code-doable |
+| 10a — Failure-state UI sweep | 🟡 Implemented, unverified | implemented 2026-09-15; automated checks pass; manual signed-in browser walkthrough of each failure path still pending (same environment limitation as every prior unit) |
+| 10b — Provider call timeouts | ✅ Done | implemented 2026-09-15, 15s AbortController timeout on all 3 provider calls |
+| 10c — DB indexing / query shape | ✅ Done | implemented 2026-09-15, index applied to real Neon DB |
+| 10d–10g (pagination/upload/caching/observability) | ❌ Removed | assessed as not worth building at this app's current scale; specs deleted |
+| 10h — Concurrency/backup testing | ❌ Removed | user requested removal 2026-09-15 |
+| Dark mode | 🟡 Implemented, unverified | token-based, manual browser check pending |
+
+**Known outstanding issue (not tied to one unit):** `test/queries-conversations-list.test.ts` has had 2 pre-existing failures (`db.selectDistinct is not a function`) since a concurrent edit landed 2026-09-14 — flagged repeatedly, never fixed, unowned.
+
 ## Current Phase
+
+- **Unit 10a implemented** (2026-09-15) per
+  `context/feature-spec/unit-10a-failure-state-ui-sweep.md`. Audited every
+  `fetch`/provider call site in `components/` first, per the spec's
+  audit-before-fix requirement — full gap table below.
+  **Gaps found and fixed:**
+  - `ConversationScreen.tsx`'s `/api/settings` GET (load HSK level) and
+    PATCH (`changeHskLevel`) had no `res.ok` check and no error handling at
+    all (an unhandled rejection on network failure). Both now check
+    `res.ok`/`.catch` and surface `setError(...)` through the existing
+    `StatusLine`.
+  - Voice-message flow (`handleRecordedAudio`) had no loading indicator
+    between mic release and the transcript arriving — the existing
+    `pending`/"Thinking…" state only started once `send()` was called
+    *after* transcription succeeded. New `transcribing` state renders
+    "Transcribing…" via `StatusLine` (`variant="live"`, same as
+    "Thinking…") for that gap.
+  - `speak()` (TTS playback) disabled buttons while in flight but showed no
+    visible loading text distinguishing "fetching audio" from "playing
+    audio". New `ttsLoading` state renders "Loading audio…" via
+    `StatusLine`.
+  - `HistoryPanel.tsx`'s conversation-list GET never checked `res.ok` — an
+    HTTP error status was silently parsed as success data instead of
+    surfacing the existing error message. Fixed by throwing before `.json()`
+    on a non-ok response, caught by the existing `.catch`. Also had no
+    loading indicator on first open (blank list while `conversations ===
+    null`); added a "Loading…" row, derived as `conversations === null &&
+    !error` rather than a new state variable (avoids a
+    `react-hooks/set-state-in-effect` lint violation from setting a loading
+    flag synchronously inside the list-fetch effect).
+  - **Offline was not handled anywhere in the codebase** (`grep` for
+    `navigator.onLine`/`offline` found nothing) — a real gap explicitly
+    named in the spec's item 3. Added an `offline` value via
+    `useSyncExternalStore` subscribing to the `online`/`offline` window
+    events (same hydration-safe pattern as the file's existing `mounted`
+    check — a plain `useState`+`useEffect` pair would itself trip the
+    set-state-in-effect lint rule), rendered through `StatusLine`
+    (`variant="error"`, "You're offline — reconnect to keep chatting.").
+  **Confirmed already correct, no change needed:**
+  - `HistoryPanel.tsx` already had an explicit empty state ("No past
+    conversations yet.") from a prior session (commit `8bdab3a`) — spec
+    item 2 was already satisfied.
+  - Mic-permission-denial, STT failure, DeepSeek failure/timeout (Unit
+    10b), and TTS failure all already rendered through `StatusLine` — each
+    provider route already maps its caught error to a plain-string
+    `"Upstream unavailable"` (or a specific message for mic denial) that
+    the client's `ClientResult`/`setError`/`setMicError`/`setSpeakError`
+    pattern already routes into `StatusLine`. No second error-display
+    mechanism invented.
+  - "New conversation" button, the typed-message send button, and
+    `TurnCard`'s replay button already had a pending-disable guard.
+  **New pending-disable guards added (item 4):**
+  - Mic button: was only disabled on `playingIndex !== null ||
+    conversationFull`, not on `pending`/`transcribing` — a user could start
+    a second recording while the first was still transcribing or awaiting a
+    reply. Now also disabled while `pending`, `transcribing`, or `offline`,
+    with a matching `disabledMessage` per cause.
+  - Typed-message send button: now also disabled while `offline` (was
+    already disabled on `pending`/`conversationFull`/empty input).
+  - `HistoryPanel`'s row-select and delete buttons had no guard at all —
+    a double-click could fire overlapping requests. New `pendingId` state
+    (the id of the conversation being selected/deleted) disables both
+    buttons on every row while any row's request is in flight, mirroring
+    the "New conversation" button's own pending pattern.
+  **No new visual design system** — every addition reuses the existing
+  `StatusLine` component and CSS custom-property tokens (`--text-muted`,
+  `--space-*`, etc.); no new colors, components, or error-display surface.
+  `npx tsc --noEmit`, `npm run build` (route table unchanged), and
+  `npm run lint` all clean. `npm test`: 137 passing, 2 failing — the same
+  pre-existing `test/queries-conversations-list.test.ts`
+  `db.selectDistinct is not a function` gap tracked in the Status table
+  above, unrelated to this change (no test added: this unit is UI
+  state-plumbing across already-tested provider-error paths, not new
+  branching logic worth its own unit test at this scale).
+  **Manual verification:** `npm run dev` confirmed the server starts and
+  compiles cleanly, and an unauthenticated request to `/` correctly
+  redirects to `/sign-in` (307). **Not done: an interactive walkthrough of
+  each failure path** (mic-permission-denial dialog, a real STT/DeepSeek/TTS
+  failure or timeout, toggling the OS network connection offline) — this
+  needs a real signed-in browser session with live mic/provider access,
+  which is not possible from this environment; same limitation flagged on
+  every prior unit's manual-check gap (see Status table).
 
 - **Unit 10b implemented** (2026-09-15) per
   `context/feature-spec/unit-10b-provider-call-timeouts.md`. Added an

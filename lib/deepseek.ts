@@ -59,7 +59,7 @@ export async function callDeepSeek(messages: ChatMessage[]): Promise<string> {
 }
 
 /**
- * Summarizes a conversation's opening user message into a short English
+ * Summarizes a conversation's opening user message into a short Chinese
  * title for the history list. Throws on any failure — callers treat this as
  * best-effort and fall back to the raw message preview.
  */
@@ -68,8 +68,10 @@ export async function generateConversationTitle(userMessage: string): Promise<st
     {
       role: "system",
       content:
-        "Summarize the topic of the user's message in 3-5 English words, " +
-        "for a chat history list title. No punctuation, no quotes. " +
+        "Summarize the topic of the user's message in 3-6 Chinese characters (简体中文), " +
+        "for a chat history list title. Name the actual subject discussed — " +
+        "never describe the user's state or mood (e.g. not \"用户很饿\"). " +
+        "No punctuation, no quotes. " +
         'Respond as JSON: {"title": "..."}.',
     },
     { role: "user", content: userMessage },
