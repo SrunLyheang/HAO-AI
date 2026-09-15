@@ -180,6 +180,30 @@ export default function ConversationScreen({
     themePreference.read,
     themePreference.getServer,
   );
+  const themeToggleRef = useRef<HTMLButtonElement>(null);
+  const toggleTheme = () => {
+    const next = !darkMode;
+    const button = themeToggleRef.current;
+    if (!button || !document.startViewTransition) {
+      themePreference.persist(next);
+      return;
+    }
+    document.startViewTransition(() => {
+      themePreference.persist(next);
+    }).ready.then(() => {
+      const { top, left, width, height } = button.getBoundingClientRect();
+      const x = left + width / 2;
+      const y = top + height / 2;
+      const maxRadius = Math.hypot(
+        Math.max(x, window.innerWidth - x),
+        Math.max(y, window.innerHeight - y),
+      );
+      document.documentElement.animate(
+        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${maxRadius}px at ${x}px ${y}px)`] },
+        { duration: 700, easing: "ease-in-out", pseudoElement: "::view-transition-new(root)" },
+      );
+    });
+  };
   // Per-AI-turn playback speed (index -> rate), default 1x. Replaces the old
   // single app-wide rate switcher (see progress-tracker.md).
   const [turnRates, setTurnRates] = useState<Record<number, SpeakingRate>>({});
@@ -531,7 +555,8 @@ export default function ConversationScreen({
           <HskPicker level={hskLevel} onChange={changeHskLevel} />
           <button
             type="button"
-            onClick={() => themePreference.persist(!darkMode)}
+            ref={themeToggleRef}
+            onClick={toggleTheme}
             aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
             title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
             style={{
