@@ -19,7 +19,7 @@ import ZhOnlyToggle from "@/components/ZhOnlyToggle";
 import DisplaySupportToggle from "@/components/DisplaySupportToggle";
 import TurnCard from "@/components/TurnCard";
 import HistoryPanel from "@/components/HistoryPanel";
-import { createPersistedPreference } from "@/components/preference-store";
+import { createPersistedPreference, themePreference } from "@/components/preference-store";
 import * as conversation from "@/components/conversation-client";
 
 const MAX_TURNS_PER_CONVERSATION = 25;
@@ -45,18 +45,6 @@ const zhOnlyModePreference = createPersistedPreference<boolean>({
   fallback: false,
   isValid: () => true,
   parse: (raw) => raw === "true",
-});
-
-// Dark mode — same localStorage pattern as the other display preferences.
-// The inline script in app/layout.tsx reads this same "theme" key before
-// first paint so a returning dark-mode user never sees a light flash.
-const themePreference = createPersistedPreference<boolean>({
-  storageKey: "theme",
-  changeEvent: "theme-change",
-  fallback: false,
-  isValid: () => true,
-  parse: (raw) => raw === "dark",
-  serialize: (dark) => (dark ? "dark" : "light"),
 });
 
 // Which lines of an AI turn are shown — a display preference, stored the

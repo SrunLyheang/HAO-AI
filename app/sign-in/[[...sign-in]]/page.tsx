@@ -1,11 +1,21 @@
+"use client";
+
+import { useSyncExternalStore } from "react";
 import { SignIn } from "@clerk/nextjs";
 import AuthShell from "@/components/auth/AuthShell";
-import { authAppearance } from "@/components/auth/clerk-appearance";
+import { getAuthAppearance } from "@/components/auth/clerk-appearance";
+import { themePreference } from "@/components/preference-store";
 
 export default function SignInPage() {
+  const darkMode = useSyncExternalStore(
+    themePreference.subscribe,
+    themePreference.read,
+    themePreference.getServer,
+  );
+
   return (
     <AuthShell heading="Welcome to hao.AI" subheading="Sign in to keep practicing spoken Mandarin.">
-      <SignIn appearance={authAppearance} />
+      <SignIn appearance={getAuthAppearance(darkMode)} />
     </AuthShell>
   );
 }

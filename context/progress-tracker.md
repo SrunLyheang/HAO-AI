@@ -31,11 +31,46 @@ update it whenever a unit's status changes.
 | 10c — DB indexing / query shape | ✅ Done | implemented 2026-09-15, index applied to real Neon DB |
 | 10d–10g (pagination/upload/caching/observability) | ❌ Removed | assessed as not worth building at this app's current scale; specs deleted |
 | 10h — Concurrency/backup testing | ❌ Removed | user requested removal 2026-09-15 |
-| Dark mode | 🟡 Implemented, unverified | token-based, manual browser check pending |
+| Dark mode | 🟡 Implemented, unverified | token-based; Clerk sign-in/sign-up card fixed 2026-09-15 (was hardcoded light regardless of theme); manual browser check pending |
 
-**Known outstanding issue (not tied to one unit):** `test/queries-conversations-list.test.ts` has had 2 pre-existing failures (`db.selectDistinct is not a function`) since a concurrent edit landed 2026-09-14 — flagged repeatedly, never fixed, unowned.
+**Resolved 2026-09-15 (final production-readiness check):** `test/queries-conversations-list.test.ts`'s 2 pre-existing failures (`db.selectDistinct is not a function`, flagged repeatedly since 2026-09-14, unowned) are fixed. The mock in `vi.mock("@/db/index", ...)` never stubbed `db.selectDistinct(...).from(...).where(...)`, which `listConversations` started using to filter out archived greeting-only conversations. Added a `selectDistinctWhere` mock hook to the `vi.hoisted` block, wired per-test. Also caught a second, real drift while fixing it: the "no turns" test asserted `preview === ""`, but `db/queries.ts:293` had changed its fallback to `GREETING_ZH` (`"你好！今天想聊什么？"`) — the test's expectation was stale, not just its mock. Updated the assertion to match current intended behavior. `npm test`: 139/139 passing.
+
+**Resolved 2026-09-15 (same pass):** `middleware.ts` → `proxy.ts` rename, per Next.js 16's `middleware` file-convention deprecation warning surfaced in every `npm run build` since upgrading. Confirmed via Next.js's own migration doc that only a named `export function middleware()` needs renaming to `proxy` — this file's `export default clerkMiddleware()` and `export const config` were untouched, just moved to the new filename (`git mv`). `npm run build` (warning gone, route table unchanged, still shows `ƒ Proxy (Middleware)`), `npm run lint`, and `npm test` (139/139) all clean after the rename.
+
+**Resolved 2026-09-15 (deploy-prep pass):** `vercel.json`'s cron schedule for `/api/cron/cleanup-usage` changed from hourly (`0 * * * *`) to once-daily (`0 3 * * *`). Confirmed via Vercel's own docs: the Hobby (free) plan hard-rejects any cron expression that would run more than once a day — the deploy itself would have failed on this file as written. User is deploying on the free plan, so this was a real pre-deploy blocker, not a preference. `cleanupExpiredUsage()`'s 24h expiry window tolerates a daily sweep fine — no functional loss, just less frequent pruning of `usage_log` rows.
 
 ## Current Phase
+
+- **Dark mode: Clerk sign-in/sign-up card fixed** (2026-09-15), per
+  `context/feature-spec/current-issues.md`'s report that the sign-in/sign-up
+  pages look broken in dark mode. **Root cause:**
+  `components/auth/clerk-appearance.ts` exported a single static
+  `authAppearance` object with hex colors hardcoded to the light-mode
+  palette (`#FFFFFF` background, `#111111` text, etc.) — Clerk's own
+  `<SignIn>`/`<SignUp>` widgets can't resolve `var(--token)` (documented
+  exception, see the file's own comment), so they never picked up
+  `:root[data-theme="dark"]`'s repainted tokens the way the rest of the app
+  does. The surrounding `AuthShell` card and page background *did* go dark
+  (they use `var(--surface)`/`var(--canvas)`), so the effect was a jarring
+  white Clerk form floating on a dark shell. **Fix:** `clerk-appearance.ts`
+  now exports `getAuthAppearance(dark: boolean)`, returning either the
+  existing light hex set or a new dark hex set copied from
+  `app/globals.css`'s `:root[data-theme="dark"]` block
+  (`colorBackground: "#1F2023"`, `colorText: "#F5F5F3"`, etc.). Both
+  `app/sign-in/[[...sign-in]]/page.tsx` and
+  `app/sign-up/[[...sign-up]]/page.tsx` became Client Components reading
+  the current theme via `useSyncExternalStore` and pass
+  `getAuthAppearance(darkMode)` instead of a static import. **Dedup as part
+  of the same change:** the `theme` `createPersistedPreference` instance
+  was previously defined only inside `components/ConversationScreen.tsx`
+  (module-private); moved to a new exported `themePreference` in
+  `components/preference-store.ts` so the auth pages and the main app read
+  the same `localStorage` key through one shared object instead of two
+  divergent definitions — `ConversationScreen.tsx` now imports it instead
+  of redefining it, with no behavior change there.
+  `npx tsc --noEmit` and `npm run lint` both clean. **Not yet done:** a
+  live browser check toggling dark mode with `/sign-in`/`/sign-up` open —
+  same environment limitation as every prior unit's manual-check gap.
 
 - **Unit 10a implemented** (2026-09-15) per
   `context/feature-spec/unit-10a-failure-state-ui-sweep.md`. Audited every

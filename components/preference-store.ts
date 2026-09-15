@@ -43,3 +43,16 @@ export function createPersistedPreference<T>(config: PreferenceConfig<T>) {
 
   return { read, getServer, subscribe, persist };
 }
+
+// Dark mode — shared by the main app (ConversationScreen) and the Clerk
+// auth pages, so both read/write the same "theme" key. The inline script in
+// app/layout.tsx reads this same key before first paint so a returning
+// dark-mode user never sees a light flash.
+export const themePreference = createPersistedPreference<boolean>({
+  storageKey: "theme",
+  changeEvent: "theme-change",
+  fallback: false,
+  isValid: () => true,
+  parse: (raw) => raw === "dark",
+  serialize: (dark) => (dark ? "dark" : "light"),
+});
