@@ -76,7 +76,7 @@ Azure TTS within free tier; DeepSeek negligible.
 | 7  | **Persistence (Neon + Drizzle)** | Schema: `settings`, `conversations`, `turns`. Save each turn, reload on open, greeting seeded server-side, HSK setting moves localStorage → DB, retention cap (~50 convos/user). |
 | 8  | **History overlay + conversation lifecycle** | History icon → panel of past sessions (date in mono) → tap to open read-only. "New conversation" button. ~25-turn cap forces a new conversation. |
 | 9  | **Rate limiting + spend guard** | `usage_log` table, per-minute (10) + per-day (100) count checks before provider calls → clean 429 state. Input caps enforced (audio ≤60s / ≤1MB, text ≤~500 chars). Provider billing caps set in OpenAI/Azure dashboards (checklist). |
-| 10 | **Hardening + ship** | Error/loading states for every failure path (mic denied, STT fail, timeout, offline), bundle check for leaked secrets, `npm audit`, preview-vs-prod env split, README. |
+| 10 | **Hardening + ship** | Full scope now specced in `context/feature-spec/unit-10-hardening-production-readiness.md` (2026-09-15 audit): failure-state UI sweep (error/loading/empty states, mic denied, STT fail, timeout, offline — 10a), provider call timeouts (10b), `turns` table indexing + N+1 re-check (10c), conversation-history pagination assessment (10d), upload compression assessment (10e), caching assessment (10f), uptime monitoring + structured logging (10g), concurrency + backup-restore testing (10h) — plus the original bundle check for leaked secrets, `npm audit`, preview-vs-prod env split, README. Rate limiting/spend caps stay owned by Unit 9, not duplicated here. |
 
 ---
 
@@ -164,10 +164,15 @@ with a clear error. OpenAI and Azure each have a confirmed hard spending cap;
 DeepSeek balance is low and prepaid.
 
 **10 — Hardening + ship**
-Every failure path (mic denied, STT failure, DeepSeek timeout, TTS failure,
-offline, rate-limited) shows a recoverable UI state, never a blank screen or
-unhandled rejection. `npm audit` clean of high/critical. Production and preview
-use separate env values. You use the deployed app for a week without a code
+See `context/feature-spec/unit-10-hardening-production-readiness.md` for the
+full, sub-unit-by-sub-unit done criteria (2026-09-15 audit expanded this
+unit's scope beyond the summary below). Summary: every failure path (mic
+denied, STT failure, DeepSeek/Groq/ElevenLabs timeout, TTS failure, offline,
+rate-limited) shows a recoverable UI state, never a blank screen or
+unhandled rejection; `turns` has the index its query patterns need;
+concurrency and backup-restore are each covered by at least one verified
+check; `npm audit` clean of high/critical. Production and preview use
+separate env values. You use the deployed app for a week without a code
 change.
 
 ---

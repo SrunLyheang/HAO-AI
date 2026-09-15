@@ -5,6 +5,24 @@ change.
 
 ## Current Phase
 
+- Production-readiness audit (2026-09-15, user request: "check if my app
+  has [an 18-item hardening checklist]") — **findings documented, nothing
+  implemented, per explicit user instruction.** Checked the live codebase
+  (not just specs) against: rate limiting, API limits, spending caps, error
+  handling, loading states, empty states, failed-request handling, API
+  timeouts, duplicate-submission prevention, duplicate-payment prevention,
+  DB query optimization, DB indexes, pagination, upload compression, upload
+  size limits, request caching, uptime monitoring, error logging,
+  concurrent-user testing, and backup-restoration testing. Result: rate
+  limiting/spend caps were already fully specced but unimplemented (Unit 9,
+  unchanged by this audit); error handling, upload size limits, and some DB
+  indexes already exist; everything else is a real gap or an
+  assessed-as-not-needed finding. Full detail, evidence, and a
+  sub-unit-by-sub-unit build spec now live in
+  `context/feature-spec/unit-10-hardening-production-readiness.md`;
+  `build-spec.md`'s Unit 10 row and done criteria were updated in the same
+  change to point at it. **DRAFT — awaiting approval before any sub-unit is
+  implemented.**
 - Unit 9 spec (rate limiting + spend guard) — **still DRAFT, not implemented**.
   Two review findings against
   `context/feature-spec/unit-9-rate-limiting-spend-guard.md` fixed in the doc
@@ -1333,6 +1351,11 @@ route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → 
   `Conversation` type instead of a separate `isActive` boolean. DRAFT, not
   reviewed/approved; do not implement until Units 6/7a/7b/7c are built and
   this spec is approved.
+- Unit 10 (hardening + production readiness): spec drafted (2026-09-15) at
+  `context/feature-spec/unit-10-hardening-production-readiness.md`, split
+  into sub-units 10a–10h per `ai-workflow-rules.md` §3. DRAFT, not
+  reviewed/approved; do not implement until Unit 9 is built (rate
+  limiting/spend caps are owned there, not here) and this spec is approved.
 
 ## Open Questions
 
