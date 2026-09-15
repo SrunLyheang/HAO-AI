@@ -5,6 +5,79 @@ change.
 
 ## Current Phase
 
+- **Unit 10b implemented** (2026-09-15) per
+  `context/feature-spec/unit-10b-provider-call-timeouts.md`. Added an
+  `AbortController`-based 15s timeout to each of the three outbound provider
+  calls: `lib/deepseek.ts`'s `callDeepSeek`, `lib/groq-stt.ts`'s
+  `transcribeAudio`, `lib/elevenlabs-tts.ts`'s `synthesizeSpeech`. Each wraps
+  its `fetch` in try/finally (`clearTimeout` always runs), catches the
+  resulting `AbortError`, and rethrows a distinct `"<Provider> ... timed
+  out"` `Error`. **No route changes** — confirmed first that
+  `app/api/chat/route.ts`, `app/api/transcribe/route.ts`, and
+  `app/api/speak/route.ts` all wrap their provider call in a generic
+  `catch (err)` that already maps any thrown `Error` to a 500 ("Upstream
+  unavailable"), so the new timeout error needed no route-level handling to
+  match the spec's `500`/`502` expectation. Timeout value is 15s flat for
+  all three per the spec's explicit "conservative default, not a measured
+  p99" instruction — revisit per-provider once real latency data exists.
+  No retry/backoff added (out of scope; `app/api/chat/route.ts`'s existing
+  one malformed-JSON retry is unchanged).
+  `npm run build` (route table unchanged) and `npm run lint` both clean.
+  `npm test`: 137 passing, 2 failing — same pre-existing
+  `test/queries-conversations-list.test.ts` `db.selectDistinct is not a
+  function` gap noted in Unit 10c's entry below, unrelated to this change.
+  Manual verification: a temporary vitest file (fake timers + a `fetch` mock
+  that hangs until its `AbortSignal` fires) confirmed all three functions
+  reject with their timeout message at exactly 15s; deleted after
+  confirming, not part of the permanent suite.
+
+- Unit 10h removed (2026-09-15, user request: "remove unit 10h i dont need
+  it for now"). Deleted `context/feature-spec/unit-10h-concurrency-backup-testing.md`
+  entirely — it had zero code written (concurrency test already marked
+  deferred, backup-restore drill never started). Unit 10 is now three
+  sub-units: 10a, 10b, 10c. `build-spec.md`'s Unit 10 row and "Build order &
+  rationale" section updated to match. If backup-restore or the
+  `getOrCreateActiveConversation` concurrency race ever need verifying
+  later, write a fresh spec rather than reviving this deleted one.
+
+- **Unit 10c implemented** (2026-09-15) per
+  `context/feature-spec/unit-10c-db-indexing-query-shape.md`.
+  **Index:** `db/schema.ts`'s `turns` table gained
+  `turns_conversation_id_seq_idx`, a composite index on
+  `(conversationId, seq)` matching the `asc(turns.seq)` ordering every
+  turn query in `db/queries.ts` already uses (`getOrCreateActiveConversation`,
+  `listConversations`' per-row preview lookup, `getConversationTurns`).
+  `npx drizzle-kit generate` produced `drizzle/0006_whole_masque.sql`
+  (a single `CREATE INDEX`). **Migration apply note (same workaround as
+  Unit 9):** `drizzle-kit migrate` hung again in this environment (confirmed
+  twice — once via the plain command, once via `dotenv-cli` explicitly
+  loading `DATABASE_URL` from `.env.local` — both hung on "applying
+  migrations..." past a 25s timeout, same websocket-vs-plain-HTTPS cause
+  documented in Unit 9's entry). Applied the migration's DDL directly over
+  the `@neondatabase/serverless` HTTP connection instead (a one-off script,
+  deleted after use, using `sql.query(ddl)` — the tagged-template `sql()`
+  call form Unit 9's approach implicitly assumed rejects a plain string with
+  "This function can now be called only as a tagged-template function" on
+  the current package version), then verified via `pg_indexes` (equivalent
+  to `information_schema` for this purpose) that `turns_conversation_id_seq_idx`
+  exists on the real Neon database alongside the existing `turns_pkey`.
+  **`listConversations` N+1 re-confirmed, no code change:** re-read
+  `db/queries.ts`'s `listConversations` — its per-relevant-conversation
+  `db.query.turns.findFirst` for the list preview is still bounded by the
+  same 50-conversation cap `createConversationWithGreeting` enforces (prunes
+  the oldest conversation once `count(*) >= MAX_CONVERSATIONS_PER_USER`),
+  so it can run at most ~50 extra single-row queries, not an unbounded
+  amount — still acceptable per the spec's explicit "no speculative
+  single-join rewrite" instruction. `settings`, `conversations`, and the cap
+  logic itself were not touched.
+  `npm run build` (route table unchanged), `npm run lint` (clean), and
+  `npm test` (137 passing, 2 failing) all run. **The 2 failures are
+  pre-existing and out of this unit's scope** — the same
+  `test/queries-conversations-list.test.ts` `db.selectDistinct is not a
+  function` gap first flagged in this file's 2026-09-14 eighth-follow-up
+  entry and repeated in Unit 8/Unit 9's entries; this unit's change touches
+  neither `selectDistinct` nor that test file.
+
 - Unit 10 scope narrowed (2026-09-15, user request: "check whether unit 10
   is worth building" then "remove these files if have not implemented").
   Assessed each of the eight Unit 10 sub-units against this app's actual

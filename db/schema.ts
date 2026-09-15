@@ -24,21 +24,25 @@ export const conversations = pgTable(
   ],
 );
 
-export const turns = pgTable("turns", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  conversationId: uuid("conversation_id")
-    .notNull()
-    .references(() => conversations.id, { onDelete: "cascade" }),
-  userId: text("user_id").notNull(),
-  role: text("role", { enum: ["user", "ai"] }).notNull(),
-  textZh: text("text_zh").notNull(),
-  pinyin: text("pinyin"),
-  textEn: text("text_en"),
-  correction: text("correction"),
-  correctionPinyin: text("correction_pinyin"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  seq: bigserial("seq", { mode: "bigint" }).notNull(),
-});
+export const turns = pgTable(
+  "turns",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull(),
+    role: text("role", { enum: ["user", "ai"] }).notNull(),
+    textZh: text("text_zh").notNull(),
+    pinyin: text("pinyin"),
+    textEn: text("text_en"),
+    correction: text("correction"),
+    correctionPinyin: text("correction_pinyin"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    seq: bigserial("seq", { mode: "bigint" }).notNull(),
+  },
+  (t) => [index("turns_conversation_id_seq_idx").on(t.conversationId, t.seq)],
+);
 
 export const usageLog = pgTable(
   "usage_log",

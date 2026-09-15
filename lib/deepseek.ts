@@ -6,6 +6,7 @@ export type ChatMessage = { role: "system" | "user" | "assistant"; content: stri
 
 const BASE_URL = process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com";
 const MODEL = process.env.DEEPSEEK_MODEL ?? "deepseek-chat";
+const TIMEOUT_MS = 15_000;
 
 /**
  * Calls DeepSeek's OpenAI-compatible chat-completions endpoint and returns the
@@ -17,19 +18,32 @@ export async function callDeepSeek(messages: ChatMessage[]): Promise<string> {
   const key = process.env.DEEPSEEK_API_KEY;
   if (!key) throw new Error("DEEPSEEK_API_KEY is not set");
 
-  const res = await fetch(`${BASE_URL}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${key}`,
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages,
-      temperature: 0.3,
-      response_format: { type: "json_object" },
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages,
+        temperature: 0.3,
+        response_format: { type: "json_object" },
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error("DeepSeek request timed out");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!res.ok) {
     throw new Error(`DeepSeek request failed: ${res.status} ${res.statusText}`);

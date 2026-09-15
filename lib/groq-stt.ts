@@ -7,6 +7,7 @@
 // (invariant 4).
 
 const MODEL = process.env.GROQ_STT_MODEL ?? "whisper-large-v3-turbo";
+const TIMEOUT_MS = 15_000;
 
 // Whisper occasionally decodes short/ambiguous Mandarin audio (e.g. "你好")
 // as pinyin/Latin-script text instead of Hanzi — a documented Whisper quirk,
@@ -71,11 +72,24 @@ export async function transcribeAudio(
   form.append("response_format", "verbose_json");
   if (forceZh) form.append("language", "zh");
 
-  const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
-    method: "POST",
-    headers: { authorization: `Bearer ${key}` },
-    body: form,
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { authorization: `Bearer ${key}` },
+      body: form,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error("Groq transcription request timed out");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!res.ok) {
     throw new Error(`Groq transcription request failed: ${res.status} ${res.statusText}`);

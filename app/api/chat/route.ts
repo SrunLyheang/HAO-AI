@@ -1,5 +1,9 @@
 import { NextResponse, after } from "next/server";
-import { callDeepSeek, generateConversationTitle, type ChatMessage } from "@/lib/deepseek";
+import {
+  callDeepSeek,
+  generateConversationTitle,
+  type ChatMessage,
+} from "@/lib/deepseek";
 import { toPinyin } from "@/lib/pinyin";
 import { requireUserOrResponse } from "@/lib/auth";
 import { reserveUsage } from "@/lib/ratelimit";
@@ -150,6 +154,7 @@ export async function POST(req: Request) {
   if (existingTurns === 1) {
     after(async () => {
       try {
+        if (!(await reserveUsage(userId, "chat"))) return;
         const title = await generateConversationTitle(parsed.message);
         await setConversationTitle(userId, parsed.conversationId, title);
       } catch (err) {

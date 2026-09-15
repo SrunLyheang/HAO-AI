@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
 const { cleanupExpiredUsage } = vi.hoisted(() => ({
   cleanupExpiredUsage: vi.fn(),
@@ -6,9 +6,19 @@ const { cleanupExpiredUsage } = vi.hoisted(() => ({
 
 vi.mock("@/lib/ratelimit", () => ({ cleanupExpiredUsage }));
 
+const originalCronSecret = process.env.CRON_SECRET;
+
 beforeEach(() => {
   vi.clearAllMocks();
   delete process.env.CRON_SECRET;
+});
+
+afterEach(() => {
+  if (originalCronSecret === undefined) {
+    delete process.env.CRON_SECRET;
+  } else {
+    process.env.CRON_SECRET = originalCronSecret;
+  }
 });
 
 describe("GET /api/cron/cleanup-usage", () => {
