@@ -20,8 +20,15 @@ function formatDate(createdAt: string): string {
   });
 }
 
-export default function HistoryPanel({ open, onOpenChange, onSelect, onGoLive }: HistoryPanelProps) {
-  const [conversations, setConversations] = useState<ConversationSummary[] | null>(null);
+export default function HistoryPanel({
+  open,
+  onOpenChange,
+  onSelect,
+  onGoLive,
+}: HistoryPanelProps) {
+  const [conversations, setConversations] = useState<
+    ConversationSummary[] | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   // Guards selectConversation/removeConversation against a double-click
@@ -53,29 +60,39 @@ export default function HistoryPanel({ open, onOpenChange, onSelect, onGoLive }:
     }
     if (pendingId) return;
     setPendingId(c.id);
-    const res = await fetch(`/api/conversations/${c.id}`);
-    setPendingId(null);
-    if (!res.ok) {
+    try {
+      const res = await fetch(`/api/conversations/${c.id}`);
+      if (!res.ok) {
+        setError("Could not load that conversation — try again.");
+        return;
+      }
+      const data: { turns: Turn[] } = await res.json();
+      onSelect(data.turns);
+      onOpenChange(false);
+    } catch {
       setError("Could not load that conversation — try again.");
-      return;
+    } finally {
+      setPendingId(null);
     }
-    const data: { turns: Turn[] } = await res.json();
-    onSelect(data.turns);
-    onOpenChange(false);
   }
 
   async function removeConversation(c: ConversationSummary) {
     if (pendingId) return;
-    if (!window.confirm("Delete this conversation? This can't be undone.")) return;
+    if (!window.confirm("Delete this conversation? This can't be undone."))
+      return;
     setMutationError(null);
     setPendingId(c.id);
     try {
-      const res = await fetch(`/api/conversations/${c.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/conversations/${c.id}`, {
+        method: "DELETE",
+      });
       if (!res.ok) {
         setMutationError("Could not delete that conversation — try again.");
         return;
       }
-      setConversations((prev) => prev?.filter((row) => row.id !== c.id) ?? prev);
+      setConversations(
+        (prev) => prev?.filter((row) => row.id !== c.id) ?? prev,
+      );
     } catch {
       setMutationError("Could not delete that conversation — try again.");
     } finally {
@@ -84,7 +101,9 @@ export default function HistoryPanel({ open, onOpenChange, onSelect, onGoLive }:
   }
 
   const sorted = conversations
-    ? [...conversations].sort((a, b) => (a.status === "active" ? -1 : b.status === "active" ? 1 : 0))
+    ? [...conversations].sort((a, b) =>
+        a.status === "active" ? -1 : b.status === "active" ? 1 : 0,
+      )
     : null;
   const loading = conversations === null && !error;
 
@@ -159,10 +178,18 @@ export default function HistoryPanel({ open, onOpenChange, onSelect, onGoLive }:
               </div>
             )}
             {error && (
-              <div style={{ padding: "var(--space-4)", color: "var(--err-text)" }}>{error}</div>
+              <div
+                style={{ padding: "var(--space-4)", color: "var(--err-text)" }}
+              >
+                {error}
+              </div>
             )}
             {!error && mutationError && (
-              <div style={{ padding: "var(--space-4)", color: "var(--err-text)" }}>{mutationError}</div>
+              <div
+                style={{ padding: "var(--space-4)", color: "var(--err-text)" }}
+              >
+                {mutationError}
+              </div>
             )}
             {!loading && !error && sorted && sorted.length === 0 && (
               <div
@@ -183,7 +210,10 @@ export default function HistoryPanel({ open, onOpenChange, onSelect, onGoLive }:
                   style={{
                     display: "flex",
                     alignItems: "stretch",
-                    background: c.status === "active" ? "var(--border-strong)" : "transparent",
+                    background:
+                      c.status === "active"
+                        ? "var(--border-strong)"
+                        : "transparent",
                     borderBottom: "1px solid var(--border)",
                   }}
                 >
@@ -201,13 +231,17 @@ export default function HistoryPanel({ open, onOpenChange, onSelect, onGoLive }:
                       border: "none",
                       padding: "var(--space-4)",
                       cursor: pendingId !== null ? "not-allowed" : "pointer",
-                      opacity: pendingId !== null && pendingId !== c.id ? 0.5 : 1,
+                      opacity:
+                        pendingId !== null && pendingId !== c.id ? 0.5 : 1,
                     }}
                     onMouseEnter={(e) => {
-                      if (c.status !== "active") e.currentTarget.style.background = "var(--surface-sunken)";
+                      if (c.status !== "active")
+                        e.currentTarget.style.background =
+                          "var(--surface-sunken)";
                     }}
                     onMouseLeave={(e) => {
-                      if (c.status !== "active") e.currentTarget.style.background = "transparent";
+                      if (c.status !== "active")
+                        e.currentTarget.style.background = "transparent";
                     }}
                   >
                     <div
@@ -215,11 +249,16 @@ export default function HistoryPanel({ open, onOpenChange, onSelect, onGoLive }:
                         fontFamily: "var(--font-mono)",
                         fontSize: "0.8125rem",
                         fontWeight: c.status === "active" ? 600 : 400,
-                        color: c.status === "active" ? "var(--ink)" : "var(--text-secondary)",
+                        color:
+                          c.status === "active"
+                            ? "var(--ink)"
+                            : "var(--text-secondary)",
                         marginBottom: "var(--space-1)",
                       }}
                     >
-                      {c.status === "active" ? "Current" : formatDate(c.createdAt)}
+                      {c.status === "active"
+                        ? "Current"
+                        : formatDate(c.createdAt)}
                     </div>
                     <div
                       style={{
@@ -245,12 +284,17 @@ export default function HistoryPanel({ open, onOpenChange, onSelect, onGoLive }:
                         border: "none",
                         color: "var(--text-muted)",
                         cursor: pendingId !== null ? "not-allowed" : "pointer",
-                        opacity: pendingId !== null && pendingId !== c.id ? 0.5 : 1,
+                        opacity:
+                          pendingId !== null && pendingId !== c.id ? 0.5 : 1,
                         padding: "var(--space-4)",
                         flexShrink: 0,
                       }}
-                      onMouseEnter={(e) => (e.currentTarget.style.color = "var(--err-text)")}
-                      onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.color = "var(--err-text)")
+                      }
+                      onMouseLeave={(e) =>
+                        (e.currentTarget.style.color = "var(--text-muted)")
+                      }
                     >
                       <Trash weight="bold" size={18} />
                     </button>

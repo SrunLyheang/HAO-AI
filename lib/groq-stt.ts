@@ -32,7 +32,11 @@ export function extractTranscript(data: unknown): string {
   const segments = (data as { segments?: unknown })?.segments;
   if (Array.isArray(segments) && segments.length > 0) {
     return (segments as Segment[])
-      .filter((s) => typeof s.no_speech_prob !== "number" || s.no_speech_prob < NO_SPEECH_PROB_THRESHOLD)
+      .filter(
+        (s) =>
+          typeof s.no_speech_prob !== "number" ||
+          s.no_speech_prob < NO_SPEECH_PROB_THRESHOLD,
+      )
       .map((s) => (typeof s.text === "string" ? s.text : ""))
       .join("")
       .trim();
@@ -74,14 +78,23 @@ export async function transcribeAudio(
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  let res: Response;
   try {
-    res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
-      method: "POST",
-      headers: { authorization: `Bearer ${key}` },
-      body: form,
-      signal: controller.signal,
-    });
+    const res = await fetch(
+      "https://api.groq.com/openai/v1/audio/transcriptions",
+      {
+        method: "POST",
+        headers: { authorization: `Bearer ${key}` },
+        body: form,
+        signal: controller.signal,
+      },
+    );
+    if (!res.ok) {
+      throw new Error(
+        `Groq transcription request failed: ${res.status} ${res.statusText}`,
+      );
+    }
+    const data: unknown = await res.json();
+    return extractTranscript(data);
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
       throw new Error("Groq transcription request timed out");
@@ -90,11 +103,4 @@ export async function transcribeAudio(
   } finally {
     clearTimeout(timeout);
   }
-
-  if (!res.ok) {
-    throw new Error(`Groq transcription request failed: ${res.status} ${res.statusText}`);
-  }
-
-  const data: unknown = await res.json();
-  return extractTranscript(data);
 }

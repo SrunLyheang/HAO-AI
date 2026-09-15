@@ -2,7 +2,10 @@
 // invariant 1, folder ownership). No parsing/validation here — the /api/chat
 // route validates the returned string against ChatResponse and owns the retry.
 
-export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
+export type ChatMessage = {
+  role: "system" | "user" | "assistant";
+  content: string;
+};
 
 const BASE_URL = process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com";
 const MODEL = process.env.DEEPSEEK_MODEL ?? "deepseek-chat";
@@ -20,9 +23,8 @@ export async function callDeepSeek(messages: ChatMessage[]): Promise<string> {
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  let res: Response;
   try {
-    res = await fetch(`${BASE_URL}/chat/completions`, {
+    const res = await fetch(`${BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -36,6 +38,19 @@ export async function callDeepSeek(messages: ChatMessage[]): Promise<string> {
       }),
       signal: controller.signal,
     });
+    if (!res.ok) {
+      throw new Error(
+        `DeepSeek request failed: ${res.status} ${res.statusText}`,
+      );
+    }
+    const data: unknown = await res.json();
+    const content = (
+      data as { choices?: { message?: { content?: unknown } }[] }
+    )?.choices?.[0]?.message?.content;
+    if (typeof content !== "string" || content.length === 0) {
+      throw new Error("DeepSeek response had no message content");
+    }
+    return content;
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
       throw new Error("DeepSeek request timed out");
@@ -44,18 +59,6 @@ export async function callDeepSeek(messages: ChatMessage[]): Promise<string> {
   } finally {
     clearTimeout(timeout);
   }
-
-  if (!res.ok) {
-    throw new Error(`DeepSeek request failed: ${res.status} ${res.statusText}`);
-  }
-
-  const data: unknown = await res.json();
-  const content = (data as { choices?: { message?: { content?: unknown } }[] })
-    ?.choices?.[0]?.message?.content;
-  if (typeof content !== "string" || content.length === 0) {
-    throw new Error("DeepSeek response had no message content");
-  }
-  return content;
 }
 
 /**
@@ -63,14 +66,16 @@ export async function callDeepSeek(messages: ChatMessage[]): Promise<string> {
  * title for the history list. Throws on any failure — callers treat this as
  * best-effort and fall back to the raw message preview.
  */
-export async function generateConversationTitle(userMessage: string): Promise<string> {
+export async function generateConversationTitle(
+  userMessage: string,
+): Promise<string> {
   const raw = await callDeepSeek([
     {
       role: "system",
       content:
         "Summarize the topic of the user's message in 3-6 Chinese characters (简体中文), " +
         "for a chat history list title. Name the actual subject discussed — " +
-        "never describe the user's state or mood (e.g. not \"用户很饿\"). " +
+        'never describe the user\'s state or mood (e.g. not "用户很饿"). ' +
         "No punctuation, no quotes. " +
         'Respond as JSON: {"title": "..."}.',
     },
