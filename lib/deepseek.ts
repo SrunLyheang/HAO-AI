@@ -6,6 +6,7 @@ export type ChatMessage = { role: "system" | "user" | "assistant"; content: stri
 
 const BASE_URL = process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com";
 const MODEL = process.env.DEEPSEEK_MODEL ?? "deepseek-chat";
+const TIMEOUT_MS = 15_000;
 
 /**
  * Calls DeepSeek's OpenAI-compatible chat-completions endpoint and returns the
@@ -17,19 +18,32 @@ export async function callDeepSeek(messages: ChatMessage[]): Promise<string> {
   const key = process.env.DEEPSEEK_API_KEY;
   if (!key) throw new Error("DEEPSEEK_API_KEY is not set");
 
-  const res = await fetch(`${BASE_URL}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${key}`,
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages,
-      temperature: 0.3,
-      response_format: { type: "json_object" },
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages,
+        temperature: 0.3,
+        response_format: { type: "json_object" },
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error("DeepSeek request timed out");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!res.ok) {
     throw new Error(`DeepSeek request failed: ${res.status} ${res.statusText}`);
@@ -42,4 +56,30 @@ export async function callDeepSeek(messages: ChatMessage[]): Promise<string> {
     throw new Error("DeepSeek response had no message content");
   }
   return content;
+}
+
+/**
+ * Summarizes a conversation's opening user message into a short Chinese
+ * title for the history list. Throws on any failure — callers treat this as
+ * best-effort and fall back to the raw message preview.
+ */
+export async function generateConversationTitle(userMessage: string): Promise<string> {
+  const raw = await callDeepSeek([
+    {
+      role: "system",
+      content:
+        "Summarize the topic of the user's message in 3-6 Chinese characters (简体中文), " +
+        "for a chat history list title. Name the actual subject discussed — " +
+        "never describe the user's state or mood (e.g. not \"用户很饿\"). " +
+        "No punctuation, no quotes. " +
+        'Respond as JSON: {"title": "..."}.',
+    },
+    { role: "user", content: userMessage },
+  ]);
+  const parsed: unknown = JSON.parse(raw);
+  const title = (parsed as { title?: unknown } | null)?.title;
+  if (typeof title !== "string" || title.trim().length === 0) {
+    throw new Error("DeepSeek title response had no title");
+  }
+  return title.trim().slice(0, 60);
 }

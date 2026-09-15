@@ -1,7 +1,12 @@
 import { and, asc, desc, eq, count } from "drizzle-orm";
 import { db } from "@/db/index";
 import { conversations, settings, turns } from "@/db/schema";
-import type { Conversation, ConversationSummary, HskLevel, Turn } from "@/types";
+import type {
+  Conversation,
+  ConversationSummary,
+  HskLevel,
+  Turn,
+} from "@/types";
 
 const MAX_CONVERSATIONS_PER_USER = 50;
 
@@ -12,13 +17,34 @@ const GREETING_ZH = "你好！今天想聊什么？";
 const GREETING_PINYIN = "nǐ hǎo！jīn tiān xiǎng liáo shén me？";
 const GREETING_EN = "Hi! What would you like to talk about today?";
 
+function isActiveConversationConflict(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "23505" &&
+    (!("constraint" in error) ||
+      error.constraint === "conversations_one_active_per_user")
+  );
+}
+
 function toConversation(row: typeof conversations.$inferSelect): Conversation {
-  return { id: row.id, status: row.status, createdAt: row.createdAt.toISOString() };
+  return {
+    id: row.id,
+    status: row.status,
+    title: row.title,
+    createdAt: row.createdAt.toISOString(),
+  };
 }
 
 function toTurn(row: typeof turns.$inferSelect): Turn {
   if (row.role === "user") {
-    return { id: row.id, role: "user", text_zh: row.textZh, createdAt: row.createdAt.toISOString() };
+    return {
+      id: row.id,
+      role: "user",
+      text_zh: row.textZh,
+      createdAt: row.createdAt.toISOString(),
+    };
   }
   return {
     id: row.id,
@@ -36,16 +62,27 @@ export async function getOrCreateActiveConversation(
   userId: string,
 ): Promise<{ conversation: Conversation; turns: Turn[] }> {
   const existing = await db.query.conversations.findFirst({
-    where: and(eq(conversations.userId, userId), eq(conversations.status, "active")),
+    where: and(
+      eq(conversations.userId, userId),
+      eq(conversations.status, "active"),
+    ),
   });
   if (existing) {
     const rows = await db.query.turns.findMany({
-      where: and(eq(turns.conversationId, existing.id), eq(turns.userId, userId)),
+      where: and(
+        eq(turns.conversationId, existing.id),
+        eq(turns.userId, userId),
+      ),
       orderBy: asc(turns.seq),
     });
     return { conversation: toConversation(existing), turns: rows.map(toTurn) };
   }
-  return createConversationWithGreeting(userId);
+  try {
+    return await createConversationWithGreeting(userId);
+  } catch (error) {
+    if (!isActiveConversationConflict(error)) throw error;
+    return getOrCreateActiveConversation(userId);
+  }
 }
 
 // The neon-http driver has no interactive (BEGIN/COMMIT-across-round-trips)
@@ -80,7 +117,9 @@ export async function createConversationWithGreeting(
   const archiveQuery = db
     .update(conversations)
     .set({ status: "archived" })
-    .where(and(eq(conversations.userId, userId), eq(conversations.status, "active")));
+    .where(
+      and(eq(conversations.userId, userId), eq(conversations.status, "active")),
+    );
   const insertConvQuery = db
     .insert(conversations)
     .values({ id: conversationId, userId, status: "active", createdAt: now });
@@ -109,7 +148,12 @@ export async function createConversationWithGreeting(
   }
 
   return {
-    conversation: { id: conversationId, status: "active", createdAt: now.toISOString() },
+    conversation: {
+      id: conversationId,
+      status: "active",
+      title: null,
+      createdAt: now.toISOString(),
+    },
     turns: [
       {
         id: turnId,
@@ -131,9 +175,15 @@ export class ConversationNotFoundError extends Error {
   }
 }
 
-export async function findOwnedConversation(userId: string, conversationId: string) {
+export async function findOwnedConversation(
+  userId: string,
+  conversationId: string,
+) {
   return db.query.conversations.findFirst({
-    where: and(eq(conversations.id, conversationId), eq(conversations.userId, userId)),
+    where: and(
+      eq(conversations.id, conversationId),
+      eq(conversations.userId, userId),
+    ),
   });
 }
 
@@ -190,15 +240,22 @@ export async function appendTurnPair(
   };
 }
 
-export async function countTurns(userId: string, conversationId: string): Promise<number> {
+export async function countTurns(
+  userId: string,
+  conversationId: string,
+): Promise<number> {
   const [{ value }] = await db
     .select({ value: count() })
     .from(turns)
-    .where(and(eq(turns.userId, userId), eq(turns.conversationId, conversationId)));
+    .where(
+      and(eq(turns.userId, userId), eq(turns.conversationId, conversationId)),
+    );
   return value;
 }
 
-export async function listConversations(userId: string): Promise<ConversationSummary[]> {
+export async function listConversations(
+  userId: string,
+): Promise<ConversationSummary[]> {
   const rows = await db.query.conversations.findMany({
     where: eq(conversations.userId, userId),
     orderBy: desc(conversations.createdAt),
@@ -208,24 +265,49 @@ export async function listConversations(userId: string): Promise<ConversationSum
     .selectDistinct({ conversationId: turns.conversationId })
     .from(turns)
     .where(and(eq(turns.userId, userId), eq(turns.role, "user")));
-  const conversationsWithUserTurn = new Set(userTurnRows.map((r) => r.conversationId));
+  const conversationsWithUserTurn = new Set(
+    userTurnRows.map((r) => r.conversationId),
+  );
 
   // Archived conversations the user never actually replied to (just the
   // greeting) aren't real history — the active conversation always shows
   // regardless, since it's the live session, not a past one.
-  const relevant = rows.filter((row) => row.status === "active" || conversationsWithUserTurn.has(row.id));
+  const relevant = rows.filter(
+    (row) => row.status === "active" || conversationsWithUserTurn.has(row.id),
+  );
 
   const summaries = await Promise.all(
     relevant.map(async (row) => {
-      const firstTurn = await db.query.turns.findFirst({
-        where: and(eq(turns.conversationId, row.id), eq(turns.userId, userId)),
+      // The first turn overall is always the greeting (identical across every
+      // conversation), so the fallback preview needs the first *user* turn —
+      // absent only for a brand-new active conversation, shown as "Current"
+      // regardless.
+      const firstUserTurn = await db.query.turns.findFirst({
+        where: and(
+          eq(turns.conversationId, row.id),
+          eq(turns.userId, userId),
+          eq(turns.role, "user"),
+        ),
         orderBy: asc(turns.seq),
       });
-      return { ...toConversation(row), preview: firstTurn?.textZh ?? "" };
+      return { ...toConversation(row), preview: firstUserTurn?.textZh ?? GREETING_ZH };
     }),
   );
 
   return summaries;
+}
+
+/** Best-effort: sets the LLM-generated title once, after the first user turn.
+ * Silently no-ops if the conversation was deleted meanwhile. */
+export async function setConversationTitle(
+  userId: string,
+  conversationId: string,
+  title: string,
+): Promise<void> {
+  await db
+    .update(conversations)
+    .set({ title })
+    .where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)));
 }
 
 export async function getConversationTurns(
@@ -236,7 +318,10 @@ export async function getConversationTurns(
   if (!owned) return null;
 
   const rows = await db.query.turns.findMany({
-    where: and(eq(turns.conversationId, conversationId), eq(turns.userId, userId)),
+    where: and(
+      eq(turns.conversationId, conversationId),
+      eq(turns.userId, userId),
+    ),
     orderBy: asc(turns.seq),
   });
   return rows.map(toTurn);
@@ -246,7 +331,10 @@ export async function getConversationTurns(
 // one-active-conversation invariant and there'd be nothing to fall back to
 // until a new greeting is created, so the route rejects that case before
 // this ever runs.
-export async function deleteConversation(userId: string, conversationId: string): Promise<boolean> {
+export async function deleteConversation(
+  userId: string,
+  conversationId: string,
+): Promise<boolean> {
   const owned = await findOwnedConversation(userId, conversationId);
   if (!owned || owned.status === "active") return false;
 
@@ -254,14 +342,19 @@ export async function deleteConversation(userId: string, conversationId: string)
   return true;
 }
 
-export async function getSettings(userId: string): Promise<{ hskLevel: HskLevel }> {
+export async function getSettings(
+  userId: string,
+): Promise<{ hskLevel: HskLevel }> {
   const row = await db.query.settings.findFirst({
     where: eq(settings.userId, userId),
   });
   return { hskLevel: (row?.hskLevel as HskLevel | undefined) ?? 3 };
 }
 
-export async function upsertHskLevel(userId: string, hskLevel: HskLevel): Promise<void> {
+export async function upsertHskLevel(
+  userId: string,
+  hskLevel: HskLevel,
+): Promise<void> {
   await db
     .insert(settings)
     .values({ userId, hskLevel, updatedAt: new Date() })

@@ -29,6 +29,27 @@
       "when": 1789401942870,
       "tag": "0003_mute_mac_gargan",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789438015886,
+      "tag": "0004_chunky_silk_fever",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789439755361,
+      "tag": "0005_vengeful_bulldozer",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789440310064,
+      "tag": "0006_whole_masque",
+      "breakpoints": true
     }
   ]
 }

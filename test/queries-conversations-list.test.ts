@@ -1,9 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const { findManyConversations, findFirstTurns } = vi.hoisted(() => {
+const { findManyConversations, findFirstTurns, selectDistinctWhere } = vi.hoisted(() => {
   const findManyConversations = vi.fn();
   const findFirstTurns = vi.fn();
-  return { findManyConversations, findFirstTurns };
+  const selectDistinctWhere = vi.fn();
+  return { findManyConversations, findFirstTurns, selectDistinctWhere };
 });
 
 vi.mock("@/db/index", () => ({
@@ -12,6 +13,11 @@ vi.mock("@/db/index", () => ({
       conversations: { findMany: findManyConversations },
       turns: { findFirst: findFirstTurns },
     },
+    selectDistinct: () => ({
+      from: () => ({
+        where: selectDistinctWhere,
+      }),
+    }),
   },
 }));
 
@@ -31,6 +37,7 @@ describe("listConversations", () => {
       void arg;
       return Promise.resolve({ textZh: "你好" });
     });
+    selectDistinctWhere.mockResolvedValue([{ conversationId: "conv_old" }]);
 
     const result = await listConversations("user_1");
 
@@ -40,14 +47,15 @@ describe("listConversations", () => {
     ]);
   });
 
-  it("falls back to an empty preview when a conversation has no turns", async () => {
+  it("falls back to the greeting preview when a conversation has no user turns", async () => {
     findManyConversations.mockResolvedValue([
       { id: "conv_1", userId: "user_1", status: "active", createdAt: new Date("2026-01-01T00:00:00Z") },
     ]);
     findFirstTurns.mockResolvedValue(undefined);
+    selectDistinctWhere.mockResolvedValue([]);
 
     const result = await listConversations("user_1");
 
-    expect(result[0].preview).toBe("");
+    expect(result[0].preview).toBe("你好！今天想聊什么？");
   });
 });

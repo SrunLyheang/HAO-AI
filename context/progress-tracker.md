@@ -3,23 +3,283 @@
 Update this file after every meaningful implementation
 change.
 
+## Status (source of truth — check this first)
+
+Everything below this table is a chronological narrative log, kept as
+history/context. It is **not** kept in sync — per-entry caveats like
+"not yet done: manual browser check" get copy-pasted forward and go stale
+once the check actually happens. Only this table reflects current status;
+update it whenever a unit's status changes.
+
+| Unit | Status | Notes |
+|---|---|---|
+| 0a — Local skeleton | ✅ Done | committed `96fc49b` |
+| 0b — Deploy pipeline | ⏸ Deferred | blocked on user: Vercel project, env vars, Deployment Protection. Revisit once Units 1-9 are done, before Unit 10 ship (see "Deferred" below) |
+| 1 — Text conversation loop | ✅ Done | verified live, committed `7c7ebd9` |
+| 2 — HSK level control | 🟡 Implemented, unverified | automated checks (build/lint/test/curl) pass; manual browser check + commit still pending |
+| 3 — Voice input (STT) | 🟡 Implemented, unverified | automated checks pass; manual browser check (hold-to-record, mic-deny, 60s cap) + commit still pending |
+| 4 — Voice output (TTS) | 🟡 Implemented, unverified | automated checks pass; manual browser check (autoplay, replay, rate switch) + commit still pending |
+| 5 — One-screen + Siri mic | 🟡 Implemented, unverified | automated checks pass; manual browser check (real mic/provider round trip) + commit still pending |
+| 6 — Auth (Clerk) | ✅ Done | re-verified 2026-09-14, live browser flows exercised |
+| 7a — DB schema | ✅ Done | committed, migrations applied to real Neon DB |
+| 7b — Settings persistence | ✅ Done | committed, 98/98 tests pass |
+| 7c — Conversation persistence | 🟡 Implemented, unverified | automated checks pass; full signed-in reload/cross-profile walkthrough not done |
+| 8 — History + conversation lifecycle | 🟡 Implemented, unverified | base implementation + several user-reported follow-up fixes all landed; manual browser check still pending |
+| 9 — Rate limiting + spend guard | 🟡 Implemented, partially verified | scripted verification against real Neon DB done; 3-item manual provider-dashboard checklist (Groq/ElevenLabs/DeepSeek spend caps) handed to user, not code-doable |
+| 10a — Failure-state UI sweep | 🟡 Implemented, unverified | implemented 2026-09-15; automated checks pass; manual signed-in browser walkthrough of each failure path still pending (same environment limitation as every prior unit) |
+| 10b — Provider call timeouts | ✅ Done | implemented 2026-09-15, 15s AbortController timeout on all 3 provider calls |
+| 10c — DB indexing / query shape | ✅ Done | implemented 2026-09-15, index applied to real Neon DB |
+| 10d–10g (pagination/upload/caching/observability) | ❌ Removed | assessed as not worth building at this app's current scale; specs deleted |
+| 10h — Concurrency/backup testing | ❌ Removed | user requested removal 2026-09-15 |
+| Dark mode | 🟡 Implemented, unverified | token-based; Clerk sign-in/sign-up card fixed 2026-09-15 (was hardcoded light regardless of theme); manual browser check pending |
+
+**Resolved 2026-09-15 (final production-readiness check):** `test/queries-conversations-list.test.ts`'s 2 pre-existing failures (`db.selectDistinct is not a function`, flagged repeatedly since 2026-09-14, unowned) are fixed. The mock in `vi.mock("@/db/index", ...)` never stubbed `db.selectDistinct(...).from(...).where(...)`, which `listConversations` started using to filter out archived greeting-only conversations. Added a `selectDistinctWhere` mock hook to the `vi.hoisted` block, wired per-test. Also caught a second, real drift while fixing it: the "no turns" test asserted `preview === ""`, but `db/queries.ts:293` had changed its fallback to `GREETING_ZH` (`"你好！今天想聊什么？"`) — the test's expectation was stale, not just its mock. Updated the assertion to match current intended behavior. `npm test`: 139/139 passing.
+
+**Resolved 2026-09-15 (same pass):** `middleware.ts` → `proxy.ts` rename, per Next.js 16's `middleware` file-convention deprecation warning surfaced in every `npm run build` since upgrading. Confirmed via Next.js's own migration doc that only a named `export function middleware()` needs renaming to `proxy` — this file's `export default clerkMiddleware()` and `export const config` were untouched, just moved to the new filename (`git mv`). `npm run build` (warning gone, route table unchanged, still shows `ƒ Proxy (Middleware)`), `npm run lint`, and `npm test` (139/139) all clean after the rename.
+
+**Resolved 2026-09-15 (deploy-prep pass):** `vercel.json`'s cron schedule for `/api/cron/cleanup-usage` changed from hourly (`0 * * * *`) to once-daily (`0 3 * * *`). Confirmed via Vercel's own docs: the Hobby (free) plan hard-rejects any cron expression that would run more than once a day — the deploy itself would have failed on this file as written. User is deploying on the free plan, so this was a real pre-deploy blocker, not a preference. `cleanupExpiredUsage()`'s 24h expiry window tolerates a daily sweep fine — no functional loss, just less frequent pruning of `usage_log` rows.
+
 ## Current Phase
 
-- Unit 9 spec (rate limiting + spend guard) — **still DRAFT, not implemented**.
-  Two review findings against
-  `context/feature-spec/unit-9-rate-limiting-spend-guard.md` fixed in the doc
-  itself (2026-09-14): (1) the `usage_log` schema section now specifies a
-  second, `createdAt`-leading index alongside the existing `(userId,
-  createdAt)` one, since `cleanupExpiredUsage()`'s global sweep (no `userId`
-  filter) can't use a composite index whose leading column is `userId`; (2)
-  `reserveUsage`'s concurrency design now specifies a per-user Postgres
-  advisory lock (`pg_advisory_xact_lock(hashtext(userId))`) instead of a
-  conditional `INSERT ... SELECT` count subquery or `SELECT ... FOR UPDATE`
-  — the latter two only lock/gate against rows that already exist, so a
-  user with zero `usage_log` rows (first-ever call, or right after cleanup)
-  had no row to lock and the count-then-insert race stayed open exactly
-  when it mattered. No code exists for this unit yet — these are
-  spec-only fixes; still awaiting approval before implementation starts.
+- **Dark mode: Clerk sign-in/sign-up card fixed** (2026-09-15), per
+  `context/feature-spec/current-issues.md`'s report that the sign-in/sign-up
+  pages look broken in dark mode. **Root cause:**
+  `components/auth/clerk-appearance.ts` exported a single static
+  `authAppearance` object with hex colors hardcoded to the light-mode
+  palette (`#FFFFFF` background, `#111111` text, etc.) — Clerk's own
+  `<SignIn>`/`<SignUp>` widgets can't resolve `var(--token)` (documented
+  exception, see the file's own comment), so they never picked up
+  `:root[data-theme="dark"]`'s repainted tokens the way the rest of the app
+  does. The surrounding `AuthShell` card and page background *did* go dark
+  (they use `var(--surface)`/`var(--canvas)`), so the effect was a jarring
+  white Clerk form floating on a dark shell. **Fix:** `clerk-appearance.ts`
+  now exports `getAuthAppearance(dark: boolean)`, returning either the
+  existing light hex set or a new dark hex set copied from
+  `app/globals.css`'s `:root[data-theme="dark"]` block
+  (`colorBackground: "#1F2023"`, `colorText: "#F5F5F3"`, etc.). Both
+  `app/sign-in/[[...sign-in]]/page.tsx` and
+  `app/sign-up/[[...sign-up]]/page.tsx` became Client Components reading
+  the current theme via `useSyncExternalStore` and pass
+  `getAuthAppearance(darkMode)` instead of a static import. **Dedup as part
+  of the same change:** the `theme` `createPersistedPreference` instance
+  was previously defined only inside `components/ConversationScreen.tsx`
+  (module-private); moved to a new exported `themePreference` in
+  `components/preference-store.ts` so the auth pages and the main app read
+  the same `localStorage` key through one shared object instead of two
+  divergent definitions — `ConversationScreen.tsx` now imports it instead
+  of redefining it, with no behavior change there.
+  `npx tsc --noEmit` and `npm run lint` both clean. **Not yet done:** a
+  live browser check toggling dark mode with `/sign-in`/`/sign-up` open —
+  same environment limitation as every prior unit's manual-check gap.
+
+- **Unit 10a implemented** (2026-09-15) per
+  `context/feature-spec/unit-10a-failure-state-ui-sweep.md`. Audited every
+  `fetch`/provider call site in `components/` first, per the spec's
+  audit-before-fix requirement — full gap table below.
+  **Gaps found and fixed:**
+  - `ConversationScreen.tsx`'s `/api/settings` GET (load HSK level) and
+    PATCH (`changeHskLevel`) had no `res.ok` check and no error handling at
+    all (an unhandled rejection on network failure). Both now check
+    `res.ok`/`.catch` and surface `setError(...)` through the existing
+    `StatusLine`.
+  - Voice-message flow (`handleRecordedAudio`) had no loading indicator
+    between mic release and the transcript arriving — the existing
+    `pending`/"Thinking…" state only started once `send()` was called
+    *after* transcription succeeded. New `transcribing` state renders
+    "Transcribing…" via `StatusLine` (`variant="live"`, same as
+    "Thinking…") for that gap.
+  - `speak()` (TTS playback) disabled buttons while in flight but showed no
+    visible loading text distinguishing "fetching audio" from "playing
+    audio". New `ttsLoading` state renders "Loading audio…" via
+    `StatusLine`.
+  - `HistoryPanel.tsx`'s conversation-list GET never checked `res.ok` — an
+    HTTP error status was silently parsed as success data instead of
+    surfacing the existing error message. Fixed by throwing before `.json()`
+    on a non-ok response, caught by the existing `.catch`. Also had no
+    loading indicator on first open (blank list while `conversations ===
+    null`); added a "Loading…" row, derived as `conversations === null &&
+    !error` rather than a new state variable (avoids a
+    `react-hooks/set-state-in-effect` lint violation from setting a loading
+    flag synchronously inside the list-fetch effect).
+  - **Offline was not handled anywhere in the codebase** (`grep` for
+    `navigator.onLine`/`offline` found nothing) — a real gap explicitly
+    named in the spec's item 3. Added an `offline` value via
+    `useSyncExternalStore` subscribing to the `online`/`offline` window
+    events (same hydration-safe pattern as the file's existing `mounted`
+    check — a plain `useState`+`useEffect` pair would itself trip the
+    set-state-in-effect lint rule), rendered through `StatusLine`
+    (`variant="error"`, "You're offline — reconnect to keep chatting.").
+  **Confirmed already correct, no change needed:**
+  - `HistoryPanel.tsx` already had an explicit empty state ("No past
+    conversations yet.") from a prior session (commit `8bdab3a`) — spec
+    item 2 was already satisfied.
+  - Mic-permission-denial, STT failure, DeepSeek failure/timeout (Unit
+    10b), and TTS failure all already rendered through `StatusLine` — each
+    provider route already maps its caught error to a plain-string
+    `"Upstream unavailable"` (or a specific message for mic denial) that
+    the client's `ClientResult`/`setError`/`setMicError`/`setSpeakError`
+    pattern already routes into `StatusLine`. No second error-display
+    mechanism invented.
+  - "New conversation" button, the typed-message send button, and
+    `TurnCard`'s replay button already had a pending-disable guard.
+  **New pending-disable guards added (item 4):**
+  - Mic button: was only disabled on `playingIndex !== null ||
+    conversationFull`, not on `pending`/`transcribing` — a user could start
+    a second recording while the first was still transcribing or awaiting a
+    reply. Now also disabled while `pending`, `transcribing`, or `offline`,
+    with a matching `disabledMessage` per cause.
+  - Typed-message send button: now also disabled while `offline` (was
+    already disabled on `pending`/`conversationFull`/empty input).
+  - `HistoryPanel`'s row-select and delete buttons had no guard at all —
+    a double-click could fire overlapping requests. New `pendingId` state
+    (the id of the conversation being selected/deleted) disables both
+    buttons on every row while any row's request is in flight, mirroring
+    the "New conversation" button's own pending pattern.
+  **No new visual design system** — every addition reuses the existing
+  `StatusLine` component and CSS custom-property tokens (`--text-muted`,
+  `--space-*`, etc.); no new colors, components, or error-display surface.
+  `npx tsc --noEmit`, `npm run build` (route table unchanged), and
+  `npm run lint` all clean. `npm test`: 137 passing, 2 failing — the same
+  pre-existing `test/queries-conversations-list.test.ts`
+  `db.selectDistinct is not a function` gap tracked in the Status table
+  above, unrelated to this change (no test added: this unit is UI
+  state-plumbing across already-tested provider-error paths, not new
+  branching logic worth its own unit test at this scale).
+  **Manual verification:** `npm run dev` confirmed the server starts and
+  compiles cleanly, and an unauthenticated request to `/` correctly
+  redirects to `/sign-in` (307). **Not done: an interactive walkthrough of
+  each failure path** (mic-permission-denial dialog, a real STT/DeepSeek/TTS
+  failure or timeout, toggling the OS network connection offline) — this
+  needs a real signed-in browser session with live mic/provider access,
+  which is not possible from this environment; same limitation flagged on
+  every prior unit's manual-check gap (see Status table).
+
+- **Unit 10b implemented** (2026-09-15) per
+  `context/feature-spec/unit-10b-provider-call-timeouts.md`. Added an
+  `AbortController`-based 15s timeout to each of the three outbound provider
+  calls: `lib/deepseek.ts`'s `callDeepSeek`, `lib/groq-stt.ts`'s
+  `transcribeAudio`, `lib/elevenlabs-tts.ts`'s `synthesizeSpeech`. Each wraps
+  its `fetch` in try/finally (`clearTimeout` always runs), catches the
+  resulting `AbortError`, and rethrows a distinct `"<Provider> ... timed
+  out"` `Error`. **No route changes** — confirmed first that
+  `app/api/chat/route.ts`, `app/api/transcribe/route.ts`, and
+  `app/api/speak/route.ts` all wrap their provider call in a generic
+  `catch (err)` that already maps any thrown `Error` to a 500 ("Upstream
+  unavailable"), so the new timeout error needed no route-level handling to
+  match the spec's `500`/`502` expectation. Timeout value is 15s flat for
+  all three per the spec's explicit "conservative default, not a measured
+  p99" instruction — revisit per-provider once real latency data exists.
+  No retry/backoff added (out of scope; `app/api/chat/route.ts`'s existing
+  one malformed-JSON retry is unchanged).
+  `npm run build` (route table unchanged) and `npm run lint` both clean.
+  `npm test`: 137 passing, 2 failing — same pre-existing
+  `test/queries-conversations-list.test.ts` `db.selectDistinct is not a
+  function` gap noted in Unit 10c's entry below, unrelated to this change.
+  Manual verification: a temporary vitest file (fake timers + a `fetch` mock
+  that hangs until its `AbortSignal` fires) confirmed all three functions
+  reject with their timeout message at exactly 15s; deleted after
+  confirming, not part of the permanent suite.
+
+- Unit 10h removed (2026-09-15, user request: "remove unit 10h i dont need
+  it for now"). Deleted `context/feature-spec/unit-10h-concurrency-backup-testing.md`
+  entirely — it had zero code written (concurrency test already marked
+  deferred, backup-restore drill never started). Unit 10 is now three
+  sub-units: 10a, 10b, 10c. `build-spec.md`'s Unit 10 row and "Build order &
+  rationale" section updated to match. If backup-restore or the
+  `getOrCreateActiveConversation` concurrency race ever need verifying
+  later, write a fresh spec rather than reviving this deleted one.
+
+- **Unit 10c implemented** (2026-09-15) per
+  `context/feature-spec/unit-10c-db-indexing-query-shape.md`.
+  **Index:** `db/schema.ts`'s `turns` table gained
+  `turns_conversation_id_seq_idx`, a composite index on
+  `(conversationId, seq)` matching the `asc(turns.seq)` ordering every
+  turn query in `db/queries.ts` already uses (`getOrCreateActiveConversation`,
+  `listConversations`' per-row preview lookup, `getConversationTurns`).
+  `npx drizzle-kit generate` produced `drizzle/0006_whole_masque.sql`
+  (a single `CREATE INDEX`). **Migration apply note (same workaround as
+  Unit 9):** `drizzle-kit migrate` hung again in this environment (confirmed
+  twice — once via the plain command, once via `dotenv-cli` explicitly
+  loading `DATABASE_URL` from `.env.local` — both hung on "applying
+  migrations..." past a 25s timeout, same websocket-vs-plain-HTTPS cause
+  documented in Unit 9's entry). Applied the migration's DDL directly over
+  the `@neondatabase/serverless` HTTP connection instead (a one-off script,
+  deleted after use, using `sql.query(ddl)` — the tagged-template `sql()`
+  call form Unit 9's approach implicitly assumed rejects a plain string with
+  "This function can now be called only as a tagged-template function" on
+  the current package version), then verified via `pg_indexes` (equivalent
+  to `information_schema` for this purpose) that `turns_conversation_id_seq_idx`
+  exists on the real Neon database alongside the existing `turns_pkey`.
+  **`listConversations` N+1 re-confirmed, no code change:** re-read
+  `db/queries.ts`'s `listConversations` — its per-relevant-conversation
+  `db.query.turns.findFirst` for the list preview is still bounded by the
+  same 50-conversation cap `createConversationWithGreeting` enforces (prunes
+  the oldest conversation once `count(*) >= MAX_CONVERSATIONS_PER_USER`),
+  so it can run at most ~50 extra single-row queries, not an unbounded
+  amount — still acceptable per the spec's explicit "no speculative
+  single-join rewrite" instruction. `settings`, `conversations`, and the cap
+  logic itself were not touched.
+  `npm run build` (route table unchanged), `npm run lint` (clean), and
+  `npm test` (137 passing, 2 failing) all run. **The 2 failures are
+  pre-existing and out of this unit's scope** — the same
+  `test/queries-conversations-list.test.ts` `db.selectDistinct is not a
+  function` gap first flagged in this file's 2026-09-14 eighth-follow-up
+  entry and repeated in Unit 8/Unit 9's entries; this unit's change touches
+  neither `selectDistinct` nor that test file.
+
+- Unit 10 scope narrowed (2026-09-15, user request: "check whether unit 10
+  is worth building" then "remove these files if have not implemented").
+  Assessed each of the eight Unit 10 sub-units against this app's actual
+  scale (private, single-user, ~20 sessions/month per
+  `project-overview.md`'s Goal 5/7) rather than building the full audit
+  checklist uncritically. **Kept, still worth building:**
+  `unit-10a-failure-state-ui-sweep.md`, `unit-10b-provider-call-timeouts.md`,
+  `unit-10c-db-indexing-query-shape.md` (all cheap, real risk regardless of
+  scale), and `unit-10h-concurrency-backup-testing.md` (kept for its
+  backup-restore drill — a one-time manual Neon check, not code; its
+  concurrency test is now marked deferred in that file's own "Decision"
+  section rather than dropped, since the race is low-probability at
+  single-user scale and no bug has surfaced it). **Removed outright** (each
+  was already DRAFT/CLOSED with zero code written, and each is unlikely to
+  ever be worth building at this app's stated scale): `unit-10d-conversation-pagination.md`
+  (50-conversation cap already bounds response size),
+  `unit-10e-upload-handling-assessment.md` (size cap already implemented;
+  compression assessed and rejected), `unit-10f-caching-assessment.md` (no
+  repeated-request pattern exists beyond Unit 2's already-built HSK prompt
+  cache), and `unit-10g-observability-uptime-logging.md` (uptime
+  monitoring/structured logging is real ops tooling for traffic this app
+  doesn't have — `console.error` is fine to grep in Vercel's log stream at
+  this volume; revisit only once there's a real deploy pipeline and users
+  beyond the owner). Deleted rather than kept as dead drafts, since a
+  removed feature with zero implementation leaves nothing to "supersede" —
+  their reasoning is preserved here and in the surviving files' own
+  Evidence/Decision sections instead. `build-spec.md`'s Unit 10 row and
+  "Build order & rationale" section updated in the same change to match.
+
+- Production-readiness audit (2026-09-15, user request: "check if my app
+  has [an 18-item hardening checklist]") — **findings documented, nothing
+  implemented, per explicit user instruction.** Checked the live codebase
+  (not just specs) against: rate limiting, API limits, spending caps, error
+  handling, loading states, empty states, failed-request handling, API
+  timeouts, duplicate-submission prevention, duplicate-payment prevention,
+  DB query optimization, DB indexes, pagination, upload compression, upload
+  size limits, request caching, uptime monitoring, error logging,
+  concurrent-user testing, and backup-restoration testing. Result: rate
+  limiting/spend caps were already fully specced but unimplemented (Unit 9,
+  unchanged by this audit); error handling, upload size limits, and some DB
+  indexes already exist; everything else is a real gap or an
+  assessed-as-not-needed finding. Full detail, evidence, and a
+  sub-unit-by-sub-unit build spec now live in
+  `context/feature-spec/unit-10-hardening-production-readiness.md`;
+  `build-spec.md`'s Unit 10 row and done criteria were updated in the same
+  change to point at it. **DRAFT — awaiting approval before any sub-unit is
+  implemented.**
+- Unit 9 (rate limiting + spend guard) — **implemented** (2026-09-15) per
+  `context/feature-spec/unit-9-rate-limiting-spend-guard.md`, on the user's
+  explicit go-ahead to implement the approved spec. See "Completed" below
+  for full detail. **Not yet done:** the three-item manual provider-dashboard
+  checklist (Groq/ElevenLabs spend caps, DeepSeek balance) — handed to the
+  user, cannot be done from code per `ai-workflow-rules.md` §5.4.
 - Dark mode (2026-09-14, user request) — **implemented**: `app/globals.css`
   gained a `:root[data-theme="dark"]` block redefining every existing color
   token (no new tokens, no component changed a color value directly); a
@@ -88,6 +348,86 @@ change.
 
 ## Completed
 
+- 2026-09-15: **Unit 9 implemented** per
+  `context/feature-spec/unit-9-rate-limiting-spend-guard.md`.
+  **Schema + migration:** `db/schema.ts` gained `usageLog` (`id`, `userId`,
+  `route`, `createdAt`, plus the spec's two indexes — `(userId, createdAt)`
+  for `reserveUsage`'s per-user window counts and a `createdAt`-leading one
+  for `cleanupExpiredUsage()`'s global sweep). `npx drizzle-kit generate`
+  produced `drizzle/0004_chunky_silk_fever.sql`, byte-matching the spec's
+  schema exactly. **Migration apply note:** `drizzle-kit migrate` hung
+  indefinitely in this environment — it needs a websocket connection to
+  Neon and this sandbox's network only allows plain HTTPS (the same
+  `@neondatabase/serverless` HTTP driver every other query in this app
+  already uses worked fine). Applied the migration's DDL directly over that
+  HTTP connection instead, then verified via `information_schema` that
+  `usage_log` and both indexes exist on the real database — this repo's
+  `__drizzle_migrations` journal table was already missing entries for
+  0002/0003 for the same apparent reason (pre-existing, not caused here),
+  so this isn't a new gap.
+  **`lib/ratelimit.ts` (new):** `reserveUsage`/`cleanupExpiredUsage`. One
+  real constraint the spec didn't anticipate: this project's Drizzle driver
+  is `neon-http`, whose `db.transaction()` unconditionally throws ("No
+  transactions support in neon-http driver" — confirmed by reading
+  `node_modules/drizzle-orm/neon-http/session.cjs`); `db.batch()` is the
+  only atomic primitive (already the pattern `db/queries.ts` uses). Built
+  `reserveUsage` as one `db.batch()` of three `db.execute(sql\`...\`)`statements: (1)`pg_advisory_xact_lock(hashtext(userId)::bigint)`, (2) a
+conditional `INSERT ... SELECT ... WHERE`(minute-window count)`< 30 AND`(day-window count)`< 300 RETURNING id`, (3) the per-write 24h cleanup
+delete. This
+still closes the race the spec's advisory-lock requirement calls for:
+Neon's HTTP batch runs each item as a separate statement inside one real
+Postgres transaction, and under the default READ COMMITTED isolation
+each statement takes its own fresh snapshot — so item 2 only takes its
+snapshot *after* item 1 finishes blocking on the lock, meaning it always
+sees rows any just-committed concurrent transaction already inserted.
+(A single combined SQL statement wouldn't have this property — Postgres
+fixes one snapshot per statement at the start, before it waits on any
+lock inside it — which is why this is three `db.batch()`items, not one.)
+**Routes:**`app/api/transcribe/route.ts`, `app/api/chat/route.ts`, and
+`app/api/speak/route.ts`each gained a`reserveUsage(userId, route)`check (429`"Rate limit reached; try again later."`on failure) at the
+exact insertion points the spec named — transcribe/speak before their
+provider call, chat after the existing 25-turn check but before`callDeepSeek`.
+**Retention:** new `app/api/cron/cleanup-usage/route.ts`(bearer-token
+guarded via a new`CRON_SECRET`env var, added to`.env.example`per`ai-workflow-rules.md`§5.6) and a new`vercel.json`scheduling it hourly
+— the one route in the app with no`requireUser()`call, since it has no
+end-user session.
+**Docs:**`architecture.md`'s "Rate check" bullet, its stack table's
+"Rate limiting" row, and invariant 6 all corrected from the old
+10/minute-100/day per-route wording to the shared-bucket 30/minute,
+300/day design, per the spec's required same-change correction
+(`ai-workflow-rules.md`§6.2).
+**Tests:**`test/ratelimit.test.ts`(all of this unit's own boundary
+cases: 29-vs-30 in the last 60s, 299-vs-300 in the last 24h, the
+lock->conditional-insert->cleanup shape per route,`cleanupExpiredUsage`not scoped to one user) plus`test/chat-ratelimit.test.ts`,
+`test/transcribe-ratelimit.test.ts`, `test/speak-ratelimit.test.ts`(each:`reserveUsage`mocked`false`-> 429, provider function never
+called). **Existing tests fixed as a required side effect:**`test/auth-guard.test.ts`and`test/chat-conversation.test.ts`didn't mock`@/lib/ratelimit`, so importing the now-`lib/ratelimit.ts`-importing
+routes tried to construct a real `neon()`client with no`DATABASE_URL`in the test environment and threw; both gained the same`vi.mock("@/lib/ratelimit", ...)`seam the new rate-limit test files use.
+**Manual verification:** no real browser/mic session is possible from
+this environment (same limitation as every prior unit), so ran a scripted
+equivalent directly against the real Neon database instead — 32`reserveUsage`calls for a synthetic`unit9_manual_check_user`, confirming
+the 31st (not the 30th or 32nd) is the first rejected, then confirmed
+`cleanupExpiredUsage()`runs cleanly and doesn't prune the 30 fresh rows,
+then deleted all synthetic rows so no test data was left in the real
+table.`npx tsc --noEmit`, `npm run lint`, `npm run build`(route table
+now lists`/api/cron/cleanup-usage`), and `npm test`all green for this
+unit's own files.
+**Not fixed, pre-existing and out of this unit's scope:**`test/queries-conversations-list.test.ts`'s 2 failures
+(`db.selectDistinct is not a function`) — already flagged in this file's
+2026-09-14 entry as an unrelated concurrent change, unchanged by this
+session. **Also noticed, not made by this session — a live concurrent
+edit, not a one-time drop:** by the end of this session, `git status`showed`context/feature-spec/build-spec.md`modified, the old`unit-10-hardening-production-readiness.md` deleted, and eight new files
+(`unit-10a-failure-state-ui-sweep.md`through`unit-10h-concurrency-
+  backup-testing.md`) — a Unit 10 restructure actively landing on disk from
+outside this conversation while Unit 9 was being implemented. None of it
+was read, touched, staged, or reverted here; it's outside Unit 9's scope
+and this file's own commit (see "Current Goal") deliberately stages only
+Unit 9's files so the other session's in-progress work isn't caught up in
+it.
+**Handed to the user, per the spec's own checklist (not code-doable):**
+set a hard monthly spend cap in the Groq console for `GROQ_API_KEY`; set
+one in the ElevenLabs account for `ELEVENLABS_API_KEY`; confirm the
+  DeepSeek account balance is prepaid and kept low.
+
 - 2026-09-14 (same day, eighth follow-up): **Delete-from-history + turn-card
   font consistency**, direct user request against a screenshot of the
   transcript. Ran `ui-ux-pro-max:ui-styling` as instructed — this app doesn't
@@ -95,7 +435,7 @@ change.
   token system in `ui-context.md`), so the fix reuses that existing system
   rather than introducing a second styling approach for one change.
   **Delete conversations:** new `db/queries.ts` `deleteConversation(userId,
-  conversationId)` — ownership-checked, refuses (`false`) to delete the
+conversationId)` — ownership-checked, refuses (`false`) to delete the
   `active` conversation (there'd be nothing to fall back to and it'd violate
   the one-active-conversation invariant), otherwise deletes the row; `turns`
   cascade automatically via the existing `onDelete: "cascade"` FK in
@@ -209,7 +549,7 @@ change.
   `components/ConversationScreen.tsx`: new `conversationId` state (seeded
   from the `conversation` prop, updated by "New conversation", now the
   value `send()` sends instead of the static prop) and `viewMode: "live" |
-  "history"` state; the previously-disabled history icon now opens
+"history"` state; the previously-disabled history icon now opens
   `HistoryPanel`; selecting an archived row sets `viewMode = "history"` and
   stores the loaded turns in a separate `historyTurns` state (the live
   `history` state is never overwritten by a read-only view); while in
@@ -217,7 +557,7 @@ change.
   the mic/type-toggle/New-conversation bottom bar is hidden entirely, and a
   "← Back to conversation" button above the transcript returns to
   `viewMode = "live"`. New "New conversation" button (`POST
-  /api/conversations`, replaces `history` with the returned seeded-greeting
+/api/conversations`, replaces `history` with the returned seeded-greeting
   `turns`, updates `conversationId`, resets `turnRates`, auto-plays the
   greeting via the existing `speak()` path). 25-turn cap: once
   `history.length >= MAX_TURNS_PER_CONVERSATION` (25, mirrors
@@ -305,7 +645,7 @@ change.
   password" / "Confirm password" / "Reset Password") inside our shell. Best
   explanation for the reported symptom is the **webpack HMR remount loop
   fixed in the previous entry**: "Forgot password?" transitions the Clerk
-  form *in place*, and a tree re-render every ~1s would snap it back to the
+  form _in place_, and a tree re-render every ~1s would snap it back to the
   start screen, looking exactly like a dead link. Not reproducible end-to-end
   from here without a valid account password step (a programmatic fill of the
   identifier field does not register in Clerk's controlled React inputs), so
@@ -350,10 +690,10 @@ change.
      and a reminder to keep them in sync with the tokens. Also dropped
      `padding: 0` from `.auth-clerk-card`, which had been clipping Clerk's
      absolutely-positioned "Last used" badge at the card's top edge.
-  `npm run build`/`lint`/`test` (89 tests) green. Live-verified via `browse`
-  at 1280px and 400px: footer now renders on a light surface with legible
-  text, no clipped badge, no horizontal scroll, and the request count for a
-  client parked on `/sign-in` dropped from 8-per-8s to 0.
+     `npm run build`/`lint`/`test` (89 tests) green. Live-verified via `browse`
+     at 1280px and 400px: footer now renders on a light surface with legible
+     text, no clipped badge, no horizontal scroll, and the request count for a
+     client parked on `/sign-in` dropped from 8-per-8s to 0.
 
 - 2026-09-14 (same day, third follow-up): **Real bug found and fixed: sign-in
   redirected to Clerk's hosted Account Portal, not our own `/sign-in`.** The
@@ -388,7 +728,7 @@ change.
   confirming the server-side check runs), `npm run lint`, and `npm test` (89
   tests) all green. Live-verified via `browse` + a dev-server restart (env
   changes need a restart to load): `curl -D-` on `/` now shows `Location:
-  http://localhost:3000/sign-in?redirect_url=...` (own domain, not
+http://localhost:3000/sign-in?redirect_url=...` (own domain, not
   `accounts.dev`), and a fresh navigation lands on the aurora-shell `/sign-in`
   page with no `createRouteMatcher` or "Structural CSS" warnings in console.
   **Also clarified, no code change:** a flood of `GET /sign-in` lines the
@@ -400,7 +740,7 @@ change.
 - 2026-09-14 (same day, second follow-up): **`@clerk/ui` added to pin
   Clerk's component structure**, per the user's request after seeing a
   "Structural CSS detected... `body.cl-component`, `.cl-component
-  .button:focus-visible`" warning in the browser console
+.button:focus-visible`" warning in the browser console
   (`code=structural_css_pin_clerk_ui`) on the redesigned `/sign-in` page.
   **Self-correction:** initially misdiagnosed this warning as coming from an
   unrelated Clerk-hosted "Account Portal" page based on the bundle filename
@@ -411,8 +751,8 @@ change.
   `clerk-appearance.ts`) that its own newer version's pin-check flags
   without `@clerk/ui` installed. `npm install @clerk/ui` (`^1.32.3`); `app/layout.tsx`
   now imports `{ ui } from "@clerk/ui"` and passes it as `<ClerkProvider
-  ui={ui}>`, exactly as Clerk's own warning message instructs. `npm run
-  build`/`lint`/`test` (89 tests) all green. Live-verified via `browse`: a
+ui={ui}>`, exactly as Clerk's own warning message instructs. `npm run
+build`/`lint`/`test` (89 tests) all green. Live-verified via `browse`: a
   fresh reload of `/sign-in` no longer logs the structural-CSS warning (only
   the expected "loaded with development keys" notice remains), and the page
   renders pixel-identical to before (no visual regression).
@@ -438,7 +778,7 @@ change.
   400px showing the card's buttons/divider clipped at the card edge; fixed
   by adding a `.auth-clerk-fluid` class with `!important` widths, applied to
   all three wrapper elements, not just `card`). `app/sign-in/[[...sign-in]]/
-  page.tsx` rewritten to use `AuthShell` + `authAppearance`.
+page.tsx` rewritten to use `AuthShell` + `authAppearance`.
   **Skipped from the reference spec (ponytail/YAGNI):** `@clerk/ui` (shadcn
   theme — unneeded, hao.AI already has its own token system), `motion` (the
   reference's animated cursor-tracking mascot — replaced outright with the
@@ -481,7 +821,7 @@ change.
   narrowed to `401`, byte-identical to the spec's snippet). Each of
   `app/api/chat/route.ts`, `app/api/transcribe/route.ts`,
   `app/api/speak/route.ts` gained the identical `try { await requireUser() }
-  catch (e) { if (e instanceof AuthError) ... }` block as `POST`'s first
+catch (e) { if (e instanceof AuthError) ... }` block as `POST`'s first
   statement, per `code-standards.md`'s route order. `app/layout.tsx` wrapped
   in `<ClerkProvider>` — no other change (fonts/metadata untouched).
   `app/page.tsx` gained `<UserButton />` in the top-right corner flex group,
@@ -529,7 +869,7 @@ change.
      their own hand-written `read`/`getServer`/`subscribe`/`persist` quartet
      for `useSyncExternalStore`. New `components/preference-store.ts`
      (`createPersistedPreference<T>({ storageKey, changeEvent, fallback,
-     isValid, parse })`) replaces all four; `app/page.tsx` now just
+isValid, parse })`) replaces all four; `app/page.tsx` now just
      instantiates `hskLevelPreference`/`zhOnlyModePreference`/
      `displaySupportPreference`/`textScalePreference` and calls `.read`/
      `.getServer`/`.subscribe`/`.persist` on them. Lives in `components/`, not
@@ -550,7 +890,7 @@ change.
      just call these and manage React state.
   4. **Audio size cap de-duplicated across the client/server seam.**
      `components/MicButton.tsx` had its own `MAX_AUDIO_BYTES_CLIENT = 1 *
-     1024 * 1024`, duplicating `app/api/transcribe/validate.ts`'s
+   1024 * 1024`, duplicating `app/api/transcribe/validate.ts`'s
      `MAX_AUDIO_BYTES` (the actual server-enforced invariant #6 value).
      `MicButton.tsx` now imports `MAX_AUDIO_BYTES` directly from
      `validate.ts` (confirmed safe: that file is pure/HTTP-free, no
@@ -561,12 +901,12 @@ change.
      were duplicated from `app/page.tsx`, which never had them. Flagging in
      case the citation was meant to point at a real (if differently-worded)
      rule elsewhere — none was found.
-  `npm run build`, `npm run lint`, `npx tsc --noEmit`, and `npm test`
-  (86 tests, unchanged — this was a structural extraction, not new logic)
-  all green after each of the four steps and again at the end. Not yet
-  manually re-verified in a live browser (no rendering/behavior change is
-  expected, but the Unit 5 manual-verification gap below still applies
-  regardless).
+     `npm run build`, `npm run lint`, `npx tsc --noEmit`, and `npm test`
+     (86 tests, unchanged — this was a structural extraction, not new logic)
+     all green after each of the four steps and again at the end. Not yet
+     manually re-verified in a live browser (no rendering/behavior change is
+     expected, but the Unit 5 manual-verification gap below still applies
+     regardless).
 
 - 2026-09-12 (same day, fourth follow-up): **CodeRabbit fix — disabled mic
   button couldn't report why.** `components/MicButton.tsx`'s `<button>` used
@@ -631,7 +971,7 @@ change.
     table was already "not yet built"; this was pure client React state
     before and after.
   - **"Native Polish Tip" correction restyle** — `components/
-    CorrectionDisclosure.tsx`'s trigger label changed from "Correction" to
+CorrectionDisclosure.tsx`'s trigger label changed from "Correction" to
     "Native Polish Tip", and its content now leads with a small "Easy Fix"
     pill using the new `--brand-accent` token. Same `correction: string`
     prop, same Radix Collapsible mechanics, no schema change — deliberately
@@ -658,23 +998,23 @@ change.
     per-message-speed reading was confirmed.
   - **Shelved, not decided** — streak counter and an ephemeral (non-
     persisted) version of the quick-reply chips; see "Open Questions" above.
-  `ui-context.md` and `code-standards.md` updated in the same change (see
-  their own diffs) to document the new control, the per-message rate model,
-  the restyled correction component, and the brand-accent exception, per
-  `ai-workflow-rules.md` §6.2. `npm run build`/`lint`/`test` (86 tests, no new
-  ones needed — this is display logic already covered by existing
-  rendering, not new branching worth its own check) all green. Manually
-  verified in a live browser (`browse` skill against the already-running
-  `npm run dev`): all four display-support modes render correctly, the
-  per-message rate row is independent per turn, and the restyled correction
-  callout matches the mockup's look (verified via a static token-accurate
-  preview after a live DeepSeek round trip intermittently 500'd — see below).
-  **Unrelated pre-existing issue noticed, not fixed** (out of this session's
-  scope): `POST /api/chat` intermittently returned a `500` with
-  `SyntaxError: Unexpected end of JSON input` during manual testing — looks
-  like a DeepSeek response-parsing edge case in the existing route, unrelated
-  to anything touched here. Flagging per `ai-workflow-rules.md` §6.7 ("never
-  let code and docs drift silently... report it").
+    `ui-context.md` and `code-standards.md` updated in the same change (see
+    their own diffs) to document the new control, the per-message rate model,
+    the restyled correction component, and the brand-accent exception, per
+    `ai-workflow-rules.md` §6.2. `npm run build`/`lint`/`test` (86 tests, no new
+    ones needed — this is display logic already covered by existing
+    rendering, not new branching worth its own check) all green. Manually
+    verified in a live browser (`browse` skill against the already-running
+    `npm run dev`): all four display-support modes render correctly, the
+    per-message rate row is independent per turn, and the restyled correction
+    callout matches the mockup's look (verified via a static token-accurate
+    preview after a live DeepSeek round trip intermittently 500'd — see below).
+    **Unrelated pre-existing issue noticed, not fixed** (out of this session's
+    scope): `POST /api/chat` intermittently returned a `500` with
+    `SyntaxError: Unexpected end of JSON input` during manual testing — looks
+    like a DeepSeek response-parsing edge case in the existing route, unrelated
+    to anything touched here. Flagging per `ai-workflow-rules.md` §6.7 ("never
+    let code and docs drift silently... report it").
 
 - 2026-09-12 (same day, follow-up): **Turn cards + bigger controls**, per a
   direct user request against the same mockup ("make the buttons bigger and
@@ -708,7 +1048,7 @@ change.
   was also simplified since it no longer needs to reserve space for an
   absolutely-positioned header. Verified at 400px via `browse`: no
   horizontal scroll (`document.documentElement.scrollWidth >
-  document.documentElement.clientWidth` is `false`), header wraps cleanly.
+document.documentElement.clientWidth` is `false`), header wraps cleanly.
   **Also noticed, not part of this change:** a concurrent edit (from outside
   this session) added a `disabled`/`disabledMessage` prop pair to
   `components/MicButton.tsx` and wired it in `app/page.tsx` to block
@@ -1175,7 +1515,7 @@ route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → 
   connection needed) and produced `drizzle/0000_high_zzzax.sql` — reviewed,
   matches the schema column-for-column with no manual edits needed
   (done-criterion #2). `npm run build`, `npm run lint`, and `npx tsc
-  --noEmit` all pass clean with the new `db/` layer present but unused by
+--noEmit` all pass clean with the new `db/` layer present but unused by
   any route/component (done-criterion #4); `npm test` still 89/89.
   `grep -R DATABASE_URL app components` finds nothing (done-criterion #5).
   **Resumed and completed 2026-09-14:** `DATABASE_URL` was added to
@@ -1212,7 +1552,7 @@ route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → 
   `npm run dev` confirms both routes return 401 unauthenticated (no browser
   session available in this environment to verify the full persist-across-
   reload path — flagged as still needing a real manual check). `grep -R
-  DATABASE_URL app components` finds nothing. `architecture.md` (`settings`
+DATABASE_URL app components` finds nothing. `architecture.md` (`settings`
   row now omits `speaking_rate`; added `app/api/settings/` boundary row;
   marked the `localStorage` HSK fallback row removed) and `code-standards.md`
   (added `app/api/settings/` to File Organization) updated in the same
@@ -1252,7 +1592,7 @@ route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → 
   mid-conversation keeps the transcript; the same active conversation shows
   in a second browser profile signed in as the same user) — no browser
   session available in this environment; flagged as outstanding. `grep -R
-  DATABASE_URL app components` finds nothing. `architecture.md` updated:
+DATABASE_URL app components` finds nothing. `architecture.md` updated:
   `conversations` row's stale plain index corrected to name the real
   partial unique index, and a new note explaining the `db.batch()`
   transaction mechanism added under "Storage model". Committed at
@@ -1333,6 +1673,11 @@ route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → 
   `Conversation` type instead of a separate `isActive` boolean. DRAFT, not
   reviewed/approved; do not implement until Units 6/7a/7b/7c are built and
   this spec is approved.
+- Unit 10 (hardening + production readiness): spec drafted (2026-09-15) at
+  `context/feature-spec/unit-10-hardening-production-readiness.md`, split
+  into sub-units 10a–10h per `ai-workflow-rules.md` §3. DRAFT, not
+  reviewed/approved; do not implement until Unit 9 is built (rate
+  limiting/spend caps are owned there, not here) and this spec is approved.
 
 ## Open Questions
 
@@ -1405,6 +1750,32 @@ route.ts` (POST: parse → 500-char cap → DeepSeek → validate → retry → 
   `context/feature-spec/unit-6-auth-clerk.md` (item 8 + Open Questions) and
   `ui-context.md`'s corner-controls layout diagram and description to match.
   Unit 6's spec now has no unresolved open questions.
+- 2026-09-15: **Unit 10 split into 10a–10h**, matching the 7a/7b/7c
+  precedent — the combined `unit-10-hardening-production-readiness.md`
+  (2026-09-15 audit) covered seven unrelated concerns in one file; it's
+  deleted and replaced by `unit-10a-failure-state-ui-sweep.md` through
+  `unit-10h-concurrency-backup-testing.md`, each self-contained with its own
+  status/review gate. Two content decisions resolved during the split: 10d
+  (conversation-history pagination) is closed as deferred — skip for now,
+  the 50-conversation cap already bounds the response, revisit only if that
+  cap is ever raised; 10b (provider call timeouts) ships a conservative 15s
+  default for DeepSeek/Groq/ElevenLabs rather than blocking on real p99
+  latency research, to be tightened once real data exists. `build-spec.md`'s
+  Unit 10 row was repointed to the 8 new files in the same change.
+- 2026-09-15: **History-list titles are now LLM-generated**, not the
+  identical greeting text. Root cause: `listConversations`'s preview picked
+  the conversation's *first turn*, which is always the hardcoded greeting —
+  every history row showed "你好！今天想聊什么？" regardless of what was
+  discussed (see screenshot in this session). Fix: `conversations` gained a
+  nullable `title` column (migration `drizzle/0005_vengeful_bulldozer.sql`,
+  not yet applied to the live DB); after a conversation's first user message
+  (`/api/chat`, `existingTurns === 1`), `after()` schedules a best-effort
+  DeepSeek call (`generateConversationTitle` in `lib/deepseek.ts`) that
+  summarizes it into a 3-5 word English title via `setConversationTitle` —
+  failure just leaves `title` null. `listConversations`'s preview fallback
+  was also fixed to use the first *user* turn instead of the first turn
+  overall, so older/untitled conversations degrade gracefully.
+  `HistoryPanel.tsx` renders `title ?? preview`.
 
 ## Session Notes
 

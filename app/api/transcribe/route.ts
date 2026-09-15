@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { transcribeAudio } from "@/lib/groq-stt";
 import { requireUserOrResponse } from "@/lib/auth";
+import { reserveUsage } from "@/lib/ratelimit";
 import { ALLOWED_AUDIO_TYPES, parseTranscribeForm } from "./validate";
 
 export async function POST(req: Request) {
   const authResult = await requireUserOrResponse();
   if (authResult instanceof NextResponse) return authResult;
+  const userId = authResult;
 
   let form: FormData;
   try {
@@ -27,6 +29,10 @@ export async function POST(req: Request) {
       else message = "Audio too large";
     }
     return NextResponse.json({ error: message }, { status: 400 });
+  }
+
+  if (!(await reserveUsage(userId, "transcribe"))) {
+    return NextResponse.json({ error: "Rate limit reached; try again later." }, { status: 429 });
   }
 
   const forceZh = form.get("mode") === "zh";

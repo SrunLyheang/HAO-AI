@@ -8,6 +8,9 @@ vi.mock("@clerk/nextjs/server", () => ({
 vi.mock("@/lib/deepseek", () => ({
   callDeepSeek: vi.fn(),
 }));
+vi.mock("@/lib/ratelimit", () => ({
+  reserveUsage: vi.fn(),
+}));
 vi.mock("@/db/queries", () => ({
   countTurns: vi.fn(),
   appendTurnPair: vi.fn(),
@@ -15,10 +18,12 @@ vi.mock("@/db/queries", () => ({
 
 import { auth } from "@clerk/nextjs/server";
 import { callDeepSeek } from "@/lib/deepseek";
+import { reserveUsage } from "@/lib/ratelimit";
 import { appendTurnPair, countTurns } from "@/db/queries";
 
 const mockAuth = vi.mocked(auth);
 const mockCallDeepSeek = vi.mocked(callDeepSeek);
+const mockReserveUsage = vi.mocked(reserveUsage);
 const mockCountTurns = vi.mocked(countTurns);
 const mockAppendTurnPair = vi.mocked(appendTurnPair);
 
@@ -33,6 +38,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockAuth.mockResolvedValue({ userId: "user_123" } as never);
   mockCountTurns.mockResolvedValue(0);
+  mockReserveUsage.mockResolvedValue(true);
   mockCallDeepSeek.mockResolvedValue(
     JSON.stringify({ reply_zh: "你好！", reply_en: "Hello!", correction: "" }),
   );
@@ -53,7 +59,12 @@ describe("POST /api/chat — conversation persistence", () => {
     mockCountTurns.mockResolvedValue(25);
     const { POST } = await import("@/app/api/chat/route");
     const res = await POST(
-      chatRequest({ history: [], message: "你好", hskLevel: 3, conversationId: CONVERSATION_ID }),
+      chatRequest({
+        history: [],
+        message: "你好",
+        hskLevel: 3,
+        conversationId: CONVERSATION_ID,
+      }),
     );
     expect(res.status).toBe(400);
     expect(mockCallDeepSeek).not.toHaveBeenCalled();
@@ -63,7 +74,12 @@ describe("POST /api/chat — conversation persistence", () => {
   it("persists both turns after a successful DeepSeek round trip", async () => {
     const { POST } = await import("@/app/api/chat/route");
     const res = await POST(
-      chatRequest({ history: [], message: "你好", hskLevel: 3, conversationId: CONVERSATION_ID }),
+      chatRequest({
+        history: [],
+        message: "你好",
+        hskLevel: 3,
+        conversationId: CONVERSATION_ID,
+      }),
     );
     expect(res.status).toBe(200);
     expect(mockAppendTurnPair).toHaveBeenCalledWith(
@@ -75,9 +91,31 @@ describe("POST /api/chat — conversation persistence", () => {
     expect(await res.json()).toMatchObject({ role: "ai", text_zh: "你好！" });
   });
 
+  it("reserves another chat unit before retrying a malformed DeepSeek response", async () => {
+    mockReserveUsage.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    mockCallDeepSeek.mockResolvedValue("not JSON");
+
+    const { POST } = await import("@/app/api/chat/route");
+    const res = await POST(
+      chatRequest({
+        history: [],
+        message: "你好",
+        hskLevel: 3,
+        conversationId: CONVERSATION_ID,
+      }),
+    );
+
+    expect(res.status).toBe(429);
+    expect(mockReserveUsage).toHaveBeenNthCalledWith(1, "user_123", "chat");
+    expect(mockReserveUsage).toHaveBeenNthCalledWith(2, "user_123", "chat");
+    expect(mockCallDeepSeek).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects a missing conversationId with 400 before any DeepSeek call", async () => {
     const { POST } = await import("@/app/api/chat/route");
-    const res = await POST(chatRequest({ history: [], message: "你好", hskLevel: 3 }));
+    const res = await POST(
+      chatRequest({ history: [], message: "你好", hskLevel: 3 }),
+    );
     expect(res.status).toBe(400);
     expect(mockCallDeepSeek).not.toHaveBeenCalled();
   });
@@ -85,7 +123,12 @@ describe("POST /api/chat — conversation persistence", () => {
   it("rejects a malformed conversationId with 400 before any DeepSeek call", async () => {
     const { POST } = await import("@/app/api/chat/route");
     const res = await POST(
-      chatRequest({ history: [], message: "你好", hskLevel: 3, conversationId: "not-a-uuid" }),
+      chatRequest({
+        history: [],
+        message: "你好",
+        hskLevel: 3,
+        conversationId: "not-a-uuid",
+      }),
     );
     expect(res.status).toBe(400);
     expect(mockCallDeepSeek).not.toHaveBeenCalled();

@@ -1,8 +1,18 @@
-import { NextResponse } from "next/server";
-import { callDeepSeek, type ChatMessage } from "@/lib/deepseek";
+import { NextResponse, after } from "next/server";
+import {
+  callDeepSeek,
+  generateConversationTitle,
+  type ChatMessage,
+} from "@/lib/deepseek";
 import { toPinyin } from "@/lib/pinyin";
 import { requireUserOrResponse } from "@/lib/auth";
-import { appendTurnPair, ConversationNotFoundError, countTurns } from "@/db/queries";
+import { reserveUsage } from "@/lib/ratelimit";
+import {
+  appendTurnPair,
+  ConversationNotFoundError,
+  countTurns,
+  setConversationTitle,
+} from "@/db/queries";
 import type { HskLevel, Turn } from "@/types";
 import { parseChatRequest, parseChatResponse } from "./validate";
 import { buildSystemPrompt } from "./prompt";
@@ -11,7 +21,11 @@ const MAX_MESSAGE_CHARS = 500;
 const MAX_HISTORY_TURNS = 50;
 const MAX_TURNS_PER_CONVERSATION = 25;
 
-function toChatMessages(history: Turn[], message: string, hskLevel: HskLevel): ChatMessage[] {
+function toChatMessages(
+  history: Turn[],
+  message: string,
+  hskLevel: HskLevel,
+): ChatMessage[] {
   return [
     { role: "system", content: buildSystemPrompt(hskLevel) },
     ...history.map(
@@ -46,27 +60,53 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Message too long" }, { status: 400 });
   }
   if (parsed.history.length > MAX_HISTORY_TURNS) {
-    return NextResponse.json({ error: "Conversation too long" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Conversation too long" },
+      { status: 400 },
+    );
   }
 
   const existingTurns = await countTurns(userId, parsed.conversationId);
   if (existingTurns >= MAX_TURNS_PER_CONVERSATION) {
-    return NextResponse.json({ error: "Conversation is full" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Conversation is full" },
+      { status: 400 },
+    );
   }
 
-  const messages = toChatMessages(parsed.history, parsed.message, parsed.hskLevel);
+  if (!(await reserveUsage(userId, "chat"))) {
+    return NextResponse.json(
+      { error: "Rate limit reached; try again later." },
+      { status: 429 },
+    );
+  }
+
+  const messages = toChatMessages(
+    parsed.history,
+    parsed.message,
+    parsed.hskLevel,
+  );
 
   let raw: string;
   try {
     raw = await callDeepSeek(messages);
   } catch (err) {
     console.error("chat: DeepSeek call failed", err);
-    return NextResponse.json({ error: "Upstream unavailable" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Upstream unavailable" },
+      { status: 500 },
+    );
   }
 
   let reply = parseChatResponse(raw);
   if (!reply) {
     // One retry with an explicit nudge, per code-standards.md.
+    if (!(await reserveUsage(userId, "chat"))) {
+      return NextResponse.json(
+        { error: "Rate limit reached; try again later." },
+        { status: 429 },
+      );
+    }
     try {
       raw = await callDeepSeek([
         ...messages,
@@ -74,7 +114,10 @@ export async function POST(req: Request) {
       ]);
     } catch (err) {
       console.error("chat: DeepSeek retry failed", err);
-      return NextResponse.json({ error: "Upstream unavailable" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Upstream unavailable" },
+        { status: 500 },
+      );
     }
     reply = parseChatResponse(raw);
   }
@@ -93,7 +136,8 @@ export async function POST(req: Request) {
         pinyin: toPinyin(reply.reply_zh),
         text_en: reply.reply_en,
         correction: reply.correction,
-        correctionPinyin: reply.correction === "" ? "" : toPinyin(reply.correction),
+        correctionPinyin:
+          reply.correction === "" ? "" : toPinyin(reply.correction),
       },
     );
   } catch (e) {
@@ -102,5 +146,22 @@ export async function POST(req: Request) {
     }
     throw e;
   }
+
+  // existingTurns === 1 means only the greeting existed before this call,
+  // i.e. this was the conversation's first user message — the one and only
+  // point a title gets generated. Runs after the response so it never adds
+  // latency; best-effort, a failure here just leaves the title null.
+  if (existingTurns === 1) {
+    after(async () => {
+      try {
+        if (!(await reserveUsage(userId, "chat"))) return;
+        const title = await generateConversationTitle(parsed.message);
+        await setConversationTitle(userId, parsed.conversationId, title);
+      } catch (err) {
+        console.error("chat: title generation failed", err);
+      }
+    });
+  }
+
   return NextResponse.json(aiTurn);
 }

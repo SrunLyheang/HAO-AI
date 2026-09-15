@@ -76,7 +76,7 @@ Azure TTS within free tier; DeepSeek negligible.
 | 7  | **Persistence (Neon + Drizzle)** | Schema: `settings`, `conversations`, `turns`. Save each turn, reload on open, greeting seeded server-side, HSK setting moves localStorage → DB, retention cap (~50 convos/user). |
 | 8  | **History overlay + conversation lifecycle** | History icon → panel of past sessions (date in mono) → tap to open read-only. "New conversation" button. ~25-turn cap forces a new conversation. |
 | 9  | **Rate limiting + spend guard** | `usage_log` table, per-minute (10) + per-day (100) count checks before provider calls → clean 429 state. Input caps enforced (audio ≤60s / ≤1MB, text ≤~500 chars). Provider billing caps set in OpenAI/Azure dashboards (checklist). |
-| 10 | **Hardening + ship** | Error/loading states for every failure path (mic denied, STT fail, timeout, offline), bundle check for leaked secrets, `npm audit`, preview-vs-prod env split, README. |
+| 10 | **Hardening + ship** | Scope narrowed 2026-09-15 to what's worth building at current single-user scale: `unit-10c-db-indexing-query-shape.md` (turns index + N+1 re-check, lands first — schema change) → `unit-10b-provider-call-timeouts.md` (DeepSeek/Groq/ElevenLabs timeouts, 15s default) → `unit-10a-failure-state-ui-sweep.md` (error/loading/empty states, mic denied, STT fail, timeout, offline, duplicate-submission guards). Pagination, upload compression, caching, uptime-monitoring/structured-logging, and concurrency/backup-restore testing were assessed and dropped/deferred as not needed right now (their spec files were removed rather than kept as dead drafts — see `progress-tracker.md`; the backup-restore drill can be revisited later, it's a manual Neon check, not code). Plus the original bundle check for leaked secrets, `npm audit`, preview-vs-prod env split, README. Rate limiting/spend caps stay owned by Unit 9, not duplicated here. |
 
 ---
 
@@ -164,11 +164,17 @@ with a clear error. OpenAI and Azure each have a confirmed hard spending cap;
 DeepSeek balance is low and prepaid.
 
 **10 — Hardening + ship**
-Every failure path (mic denied, STT failure, DeepSeek timeout, TTS failure,
-offline, rate-limited) shows a recoverable UI state, never a blank screen or
-unhandled rejection. `npm audit` clean of high/critical. Production and preview
-use separate env values. You use the deployed app for a week without a code
-change.
+Scope narrowed 2026-09-15 to three sub-units: `unit-10a-failure-state-ui-sweep.md`,
+`unit-10b-provider-call-timeouts.md`, and `unit-10c-db-indexing-query-shape.md`.
+Concurrency/backup-restore testing (former unit-10h) was removed at the
+user's request as not needed right now — revisit as a fresh spec if backup
+restoration or a concurrency race ever needs verifying. See each surviving
+file for its full done criteria. Summary: every failure path (mic denied,
+STT failure, DeepSeek/Groq/ElevenLabs timeout, TTS failure, offline,
+rate-limited) shows a recoverable UI state, never a blank screen or
+unhandled rejection; `turns` has the index its query patterns need; `npm
+audit` clean of high/critical. Production and preview use separate env
+values. You use the deployed app for a week without a code change.
 
 ---
 

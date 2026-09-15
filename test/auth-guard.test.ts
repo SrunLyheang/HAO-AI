@@ -12,6 +12,9 @@ vi.mock("@/lib/groq-stt", () => ({
 vi.mock("@/lib/elevenlabs-tts", () => ({
   synthesizeSpeech: vi.fn(),
 }));
+vi.mock("@/lib/ratelimit", () => ({
+  reserveUsage: vi.fn(),
+}));
 vi.mock("@/db/queries", () => ({
   getSettings: vi.fn(),
   upsertHskLevel: vi.fn(),

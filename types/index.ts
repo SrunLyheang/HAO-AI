@@ -40,12 +40,18 @@ export type Turn =
 
 export type AiTurn = Extract<Turn, { role: "ai" }>;
 
-/** A conversation row (Unit 7c). */
-export type Conversation = { id: string; status: "active" | "archived"; createdAt: string };
+/** A conversation row (Unit 7c). `title` is LLM-generated from the first user
+ * message, set asynchronously after that turn lands — null until then. */
+export type Conversation = {
+  id: string;
+  status: "active" | "archived";
+  title: string | null;
+  createdAt: string;
+};
 
 /** A conversation row plus its opening turn's text, for the history list (Unit 8). */
 export interface ConversationSummary extends Conversation {
-  preview: string; // first turn's text_zh; one-line truncation is CSS, not here
+  preview: string; // first user turn's text_zh, fallback while title is null
 }
 
 /** The /api/transcribe success shape. */

@@ -19,7 +19,7 @@ import ZhOnlyToggle from "@/components/ZhOnlyToggle";
 import DisplaySupportToggle from "@/components/DisplaySupportToggle";
 import TurnCard from "@/components/TurnCard";
 import HistoryPanel from "@/components/HistoryPanel";
-import { createPersistedPreference } from "@/components/preference-store";
+import { createPersistedPreference, themePreference } from "@/components/preference-store";
 import * as conversation from "@/components/conversation-client";
 
 const MAX_TURNS_PER_CONVERSATION = 25;
@@ -45,18 +45,6 @@ const zhOnlyModePreference = createPersistedPreference<boolean>({
   fallback: false,
   isValid: () => true,
   parse: (raw) => raw === "true",
-});
-
-// Dark mode — same localStorage pattern as the other display preferences.
-// The inline script in app/layout.tsx reads this same "theme" key before
-// first paint so a returning dark-mode user never sees a light flash.
-const themePreference = createPersistedPreference<boolean>({
-  storageKey: "theme",
-  changeEvent: "theme-change",
-  fallback: false,
-  isValid: () => true,
-  parse: (raw) => raw === "dark",
-  serialize: (dark) => (dark ? "dark" : "light"),
 });
 
 // Which lines of an AI turn are shown — a display preference, stored the
@@ -161,8 +149,24 @@ export default function ConversationScreen({
   const [input, setInput] = useState("");
   const [inputMode, setInputMode] = useState<"talk" | "type">("talk");
   const [pending, setPending] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const [newConversationPending, setNewConversationPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Same useSyncExternalStore pattern as `mounted` above — avoids the
+  // set-state-in-effect hydration mismatch a plain useState+useEffect pair
+  // would hit (server always has navigator.onLine === true).
+  const offline = useSyncExternalStore(
+    (callback) => {
+      window.addEventListener("online", callback);
+      window.addEventListener("offline", callback);
+      return () => {
+        window.removeEventListener("online", callback);
+        window.removeEventListener("offline", callback);
+      };
+    },
+    () => !navigator.onLine,
+    () => false,
+  );
   const [textScaleMessage, setTextScaleMessage] = useState<string | null>(null);
   const textScaleMessageTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [micError, setMicError] = useState<string | null>(null);
@@ -185,6 +189,7 @@ export default function ConversationScreen({
     textScalePreference.getServer,
   );
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
+  const [ttsLoading, setTtsLoading] = useState(false);
   const [speakError, setSpeakError] = useState<string | null>(null);
   // Loaded from Postgres via /api/settings (Unit 7b) — 3 is the same
   // default getSettings() returns for a brand-new user, so there is no
@@ -199,9 +204,15 @@ export default function ConversationScreen({
   useEffect(() => {
     let cancelled = false;
     fetch("/api/settings")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error("settings fetch failed");
+        return r.json();
+      })
       .then((data: { hskLevel: HskLevel }) => {
         if (!cancelled && !hskLevelUserChanged.current) setHskLevel(data.hskLevel);
+      })
+      .catch(() => {
+        if (!cancelled) setError("Could not load your HSK level — using the default.");
       });
     return () => {
       cancelled = true;
@@ -216,7 +227,11 @@ export default function ConversationScreen({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ hskLevel: level }),
-      }).then(() => undefined),
+      })
+        .then((r) => {
+          if (!r.ok) setError("Could not save your HSK level — try again.");
+        })
+        .catch(() => setError("Could not save your HSK level — try again.")),
     );
   }
   function stepTextScale(direction: -1 | 1) {
@@ -298,8 +313,10 @@ export default function ConversationScreen({
     if (playingIndex !== null) return;
     setPlayingIndex(index);
     setSpeakError(null);
+    setTtsLoading(true);
 
     const result = await conversation.speak(text);
+    setTtsLoading(false);
     if (!result.ok) {
       setSpeakError(result.error);
       setPlayingIndex(null);
@@ -376,10 +393,13 @@ export default function ConversationScreen({
   const conversationFull = history.length >= MAX_TURNS_PER_CONVERSATION;
 
   async function handleRecordedAudio(blob: Blob) {
+    setError(null);
+    setTranscribing(true);
     const result = await conversation.transcribe(
       blob,
       zhOnlyMode ? "zh" : "auto",
     );
+    setTranscribing(false);
     if (!result.ok) {
       setError(result.error);
       return;
@@ -647,6 +667,11 @@ export default function ConversationScreen({
             padding: "0 var(--space-4)",
           }}
         >
+          {offline && (
+            <StatusLine variant="error">
+              You&rsquo;re offline — reconnect to keep chatting.
+            </StatusLine>
+          )}
           {error && <StatusLine variant="error">{error}</StatusLine>}
           {micError && <StatusLine variant="error">{micError}</StatusLine>}
           {speakError && <StatusLine variant="error">{speakError}</StatusLine>}
@@ -656,7 +681,9 @@ export default function ConversationScreen({
               This conversation is full — start a new one to keep going.
             </StatusLine>
           )}
+          {transcribing && <StatusLine variant="live">Transcribing…</StatusLine>}
           {pending && <StatusLine variant="live">Thinking…</StatusLine>}
+          {ttsLoading && <StatusLine variant="live">Loading audio…</StatusLine>}
         </div>
 
         {viewMode === "live" && (
@@ -715,11 +742,21 @@ export default function ConversationScreen({
               <MicButton
                 onRecordingComplete={(blob) => void handleRecordedAudio(blob)}
                 onMicError={setMicError}
-                disabled={playingIndex !== null || conversationFull}
+                disabled={
+                  playingIndex !== null ||
+                  conversationFull ||
+                  pending ||
+                  transcribing ||
+                  offline
+                }
                 disabledMessage={
                   conversationFull
                     ? "This conversation is full — start a new one to keep going."
-                    : MIC_BLOCKED_MESSAGE
+                    : offline
+                      ? "You're offline — reconnect to keep chatting."
+                      : pending || transcribing
+                        ? "Wait for the current message to finish."
+                        : MIC_BLOCKED_MESSAGE
                 }
               />
             ) : (
@@ -754,14 +791,14 @@ export default function ConversationScreen({
                 <button
                   type="button"
                   onClick={() => void send(input)}
-                  disabled={pending || conversationFull || input.trim().length === 0}
+                  disabled={pending || conversationFull || offline || input.trim().length === 0}
                   title="Send"
                   style={{
                     background: "transparent",
                     border: "none",
                     color: "var(--ink)",
                     cursor: "pointer",
-                    opacity: pending || input.trim().length === 0 ? 0.4 : 1,
+                    opacity: pending || offline || input.trim().length === 0 ? 0.4 : 1,
                     padding: "var(--space-3)",
                   }}
                 >
