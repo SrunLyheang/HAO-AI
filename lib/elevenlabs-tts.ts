@@ -48,7 +48,9 @@ export async function synthesizeSpeech(text: string): Promise<ArrayBuffer> {
       },
     );
     if (!res.ok) {
-      throw new Error(`ElevenLabs TTS request failed: ${res.status} ${res.statusText}`);
+      throw new Error(
+        `ElevenLabs TTS request failed: ${res.status} ${res.statusText}`,
+      );
     }
     return await res.arrayBuffer();
   } catch (err) {

@@ -19,7 +19,10 @@ export default function SignInPage() {
   );
 
   return (
-    <AuthShell heading="Welcome to hao.AI" subheading="Sign in to keep practicing spoken Mandarin.">
+    <AuthShell
+      heading="Welcome to hao.AI"
+      subheading="Sign in to keep practicing spoken Mandarin."
+    >
       {mounted ? <SignIn appearance={getAuthAppearance(darkMode)} /> : null}
     </AuthShell>
   );
