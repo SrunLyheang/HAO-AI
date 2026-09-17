@@ -78,7 +78,7 @@ export async function transcribeAudio(
   form.append("response_format", "verbose_json");
   if (forceZh) form.append("language", "zh");
 
-  const res = await fetchWithTimeout(
+  return await fetchWithTimeout(
     "https://api.groq.com/openai/v1/audio/transcriptions",
     {
       method: "POST",
@@ -87,12 +87,14 @@ export async function transcribeAudio(
     },
     TIMEOUT_MS,
     "Groq transcription request",
+    async (res) => {
+      if (!res.ok) {
+        throw new Error(
+          `Groq transcription request failed: ${res.status} ${res.statusText}`,
+        );
+      }
+      const data: unknown = await res.json();
+      return extractTranscript(data);
+    },
   );
-  if (!res.ok) {
-    throw new Error(
-      `Groq transcription request failed: ${res.status} ${res.statusText}`,
-    );
-  }
-  const data: unknown = await res.json();
-  return extractTranscript(data);
 }

@@ -11,27 +11,27 @@ history/context. It is **not** kept in sync — per-entry caveats like
 once the check actually happens. Only this table reflects current status;
 update it whenever a unit's status changes.
 
-| Unit | Status | Notes |
-|---|---|---|
-| 0a — Local skeleton | ✅ Done | committed `96fc49b` |
-| 0b — Deploy pipeline | ⏸ Deferred | blocked on user: Vercel project, env vars, Deployment Protection. Revisit once Units 1-9 are done, before Unit 10 ship (see "Deferred" below) |
-| 1 — Text conversation loop | ✅ Done | verified live, committed `7c7ebd9` |
-| 2 — HSK level control | ✅ Done | user confirmed verified 2026-09-17 |
-| 3 — Voice input (STT) | ✅ Done | user confirmed verified 2026-09-17 |
-| 4 — Voice output (TTS) | ✅ Done | user confirmed verified 2026-09-17 |
-| 5 — One-screen + Siri mic | ✅ Done | user confirmed verified 2026-09-17 |
-| 6 — Auth (Clerk) | ✅ Done | re-verified 2026-09-14, live browser flows exercised |
-| 7a — DB schema | ✅ Done | committed, migrations applied to real Neon DB |
-| 7b — Settings persistence | ✅ Done | committed, 98/98 tests pass |
-| 7c — Conversation persistence | ✅ Done | user confirmed verified 2026-09-17 |
-| 8 — History + conversation lifecycle | ✅ Done | user confirmed verified 2026-09-17 |
-| 9 — Rate limiting + spend guard | ✅ Done | user confirmed verified 2026-09-17 (includes the 3-item provider-dashboard checklist) |
-| 10a — Failure-state UI sweep | ✅ Done | user confirmed verified 2026-09-17 |
-| 10b — Provider call timeouts | ✅ Done | implemented 2026-09-15, 15s AbortController timeout on all 3 provider calls |
-| 10c — DB indexing / query shape | ✅ Done | implemented 2026-09-15, index applied to real Neon DB |
-| 10d–10g (pagination/upload/caching/observability) | ❌ Removed | assessed as not worth building at this app's current scale; specs deleted |
-| 10h — Concurrency/backup testing | ❌ Removed | user requested removal 2026-09-15 |
-| Dark mode | ✅ Done | user confirmed verified 2026-09-17 |
+| Unit                                              | Status     | Notes                                                                                                                                         |
+| ------------------------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0a — Local skeleton                               | ✅ Done    | committed `96fc49b`                                                                                                                           |
+| 0b — Deploy pipeline                              | ⏸ Deferred | blocked on user: Vercel project, env vars, Deployment Protection. Revisit once Units 1-9 are done, before Unit 10 ship (see "Deferred" below) |
+| 1 — Text conversation loop                        | ✅ Done    | verified live, committed `7c7ebd9`                                                                                                            |
+| 2 — HSK level control                             | ✅ Done    | user confirmed verified 2026-09-17                                                                                                            |
+| 3 — Voice input (STT)                             | ✅ Done    | user confirmed verified 2026-09-17                                                                                                            |
+| 4 — Voice output (TTS)                            | ✅ Done    | user confirmed verified 2026-09-17                                                                                                            |
+| 5 — One-screen + Siri mic                         | ✅ Done    | user confirmed verified 2026-09-17                                                                                                            |
+| 6 — Auth (Clerk)                                  | ✅ Done    | re-verified 2026-09-14, live browser flows exercised                                                                                          |
+| 7a — DB schema                                    | ✅ Done    | committed, migrations applied to real Neon DB                                                                                                 |
+| 7b — Settings persistence                         | ✅ Done    | committed, 98/98 tests pass                                                                                                                   |
+| 7c — Conversation persistence                     | ✅ Done    | user confirmed verified 2026-09-17                                                                                                            |
+| 8 — History + conversation lifecycle              | ✅ Done    | user confirmed verified 2026-09-17                                                                                                            |
+| 9 — Rate limiting + spend guard                   | ✅ Done    | user confirmed verified 2026-09-17 (includes the 3-item provider-dashboard checklist)                                                         |
+| 10a — Failure-state UI sweep                      | ✅ Done    | user confirmed verified 2026-09-17                                                                                                            |
+| 10b — Provider call timeouts                      | ✅ Done    | implemented 2026-09-15, 15s AbortController timeout on all 3 provider calls; timeout now stays active through response-body consumption       |
+| 10c — DB indexing / query shape                   | ✅ Done    | implemented 2026-09-15, index applied to real Neon DB                                                                                         |
+| 10d–10g (pagination/upload/caching/observability) | ❌ Removed | assessed as not worth building at this app's current scale; specs deleted                                                                     |
+| 10h — Concurrency/backup testing                  | ❌ Removed | user requested removal 2026-09-15                                                                                                             |
+| Dark mode                                         | ✅ Done    | user confirmed verified 2026-09-17                                                                                                            |
 
 **Resolved 2026-09-15 (final production-readiness check):** `test/queries-conversations-list.test.ts`'s 2 pre-existing failures (`db.selectDistinct is not a function`, flagged repeatedly since 2026-09-14, unowned) are fixed. The mock in `vi.mock("@/db/index", ...)` never stubbed `db.selectDistinct(...).from(...).where(...)`, which `listConversations` started using to filter out archived greeting-only conversations. Added a `selectDistinctWhere` mock hook to the `vi.hoisted` block, wired per-test. Also caught a second, real drift while fixing it: the "no turns" test asserted `preview === ""`, but `db/queries.ts:293` had changed its fallback to `GREETING_ZH` (`"你好！今天想聊什么？"`) — the test's expectation was stale, not just its mock. Updated the assertion to match current intended behavior. `npm test`: 139/139 passing.
 
@@ -50,7 +50,7 @@ update it whenever a unit's status changes.
   `<SignIn>`/`<SignUp>` widgets can't resolve `var(--token)` (documented
   exception, see the file's own comment), so they never picked up
   `:root[data-theme="dark"]`'s repainted tokens the way the rest of the app
-  does. The surrounding `AuthShell` card and page background *did* go dark
+  does. The surrounding `AuthShell` card and page background _did_ go dark
   (they use `var(--surface)`/`var(--canvas)`), so the effect was a jarring
   white Clerk form floating on a dark shell. **Fix:** `clerk-appearance.ts`
   now exports `getAuthAppearance(dark: boolean)`, returning either the
@@ -85,7 +85,7 @@ update it whenever a unit's status changes.
   - Voice-message flow (`handleRecordedAudio`) had no loading indicator
     between mic release and the transcript arriving — the existing
     `pending`/"Thinking…" state only started once `send()` was called
-    *after* transcription succeeded. New `transcribing` state renders
+    _after_ transcription succeeded. New `transcribing` state renders
     "Transcribing…" via `StatusLine` (`variant="live"`, same as
     "Thinking…") for that gap.
   - `speak()` (TTS playback) disabled buttons while in flight but showed no
@@ -97,8 +97,8 @@ update it whenever a unit's status changes.
     surfacing the existing error message. Fixed by throwing before `.json()`
     on a non-ok response, caught by the existing `.catch`. Also had no
     loading indicator on first open (blank list while `conversations ===
-    null`); added a "Loading…" row, derived as `conversations === null &&
-    !error` rather than a new state variable (avoids a
+null`); added a "Loading…" row, derived as `conversations === null &&
+!error` rather than a new state variable (avoids a
     `react-hooks/set-state-in-effect` lint violation from setting a loading
     flag synchronously inside the list-fetch effect).
   - **Offline was not handled anywhere in the codebase** (`grep` for
@@ -109,7 +109,7 @@ update it whenever a unit's status changes.
     check — a plain `useState`+`useEffect` pair would itself trip the
     set-state-in-effect lint rule), rendered through `StatusLine`
     (`variant="error"`, "You're offline — reconnect to keep chatting.").
-  **Confirmed already correct, no change needed:**
+    **Confirmed already correct, no change needed:**
   - `HistoryPanel.tsx` already had an explicit empty state ("No past
     conversations yet.") from a prior session (commit `8bdab3a`) — spec
     item 2 was already satisfied.
@@ -122,9 +122,9 @@ update it whenever a unit's status changes.
     mechanism invented.
   - "New conversation" button, the typed-message send button, and
     `TurnCard`'s replay button already had a pending-disable guard.
-  **New pending-disable guards added (item 4):**
+    **New pending-disable guards added (item 4):**
   - Mic button: was only disabled on `playingIndex !== null ||
-    conversationFull`, not on `pending`/`transcribing` — a user could start
+conversationFull`, not on `pending`/`transcribing` — a user could start
     a second recording while the first was still transcribing or awaiting a
     reply. Now also disabled while `pending`, `transcribing`, or `offline`,
     with a matching `disabledMessage` per cause.
@@ -135,24 +135,24 @@ update it whenever a unit's status changes.
     (the id of the conversation being selected/deleted) disables both
     buttons on every row while any row's request is in flight, mirroring
     the "New conversation" button's own pending pattern.
-  **No new visual design system** — every addition reuses the existing
-  `StatusLine` component and CSS custom-property tokens (`--text-muted`,
-  `--space-*`, etc.); no new colors, components, or error-display surface.
-  `npx tsc --noEmit`, `npm run build` (route table unchanged), and
-  `npm run lint` all clean. `npm test`: 137 passing, 2 failing — the same
-  pre-existing `test/queries-conversations-list.test.ts`
-  `db.selectDistinct is not a function` gap tracked in the Status table
-  above, unrelated to this change (no test added: this unit is UI
-  state-plumbing across already-tested provider-error paths, not new
-  branching logic worth its own unit test at this scale).
-  **Manual verification:** `npm run dev` confirmed the server starts and
-  compiles cleanly, and an unauthenticated request to `/` correctly
-  redirects to `/sign-in` (307). **Not done: an interactive walkthrough of
-  each failure path** (mic-permission-denial dialog, a real STT/DeepSeek/TTS
-  failure or timeout, toggling the OS network connection offline) — this
-  needs a real signed-in browser session with live mic/provider access,
-  which is not possible from this environment; same limitation flagged on
-  every prior unit's manual-check gap (see Status table).
+    **No new visual design system** — every addition reuses the existing
+    `StatusLine` component and CSS custom-property tokens (`--text-muted`,
+    `--space-*`, etc.); no new colors, components, or error-display surface.
+    `npx tsc --noEmit`, `npm run build` (route table unchanged), and
+    `npm run lint` all clean. `npm test`: 137 passing, 2 failing — the same
+    pre-existing `test/queries-conversations-list.test.ts`
+    `db.selectDistinct is not a function` gap tracked in the Status table
+    above, unrelated to this change (no test added: this unit is UI
+    state-plumbing across already-tested provider-error paths, not new
+    branching logic worth its own unit test at this scale).
+    **Manual verification:** `npm run dev` confirmed the server starts and
+    compiles cleanly, and an unauthenticated request to `/` correctly
+    redirects to `/sign-in` (307). **Not done: an interactive walkthrough of
+    each failure path** (mic-permission-denial dialog, a real STT/DeepSeek/TTS
+    failure or timeout, toggling the OS network connection offline) — this
+    needs a real signed-in browser session with live mic/provider access,
+    which is not possible from this environment; same limitation flagged on
+    every prior unit's manual-check gap (see Status table).
 
 - **Unit 10b implemented** (2026-09-15) per
   `context/feature-spec/unit-10b-provider-call-timeouts.md`. Added an
@@ -161,7 +161,7 @@ update it whenever a unit's status changes.
   `transcribeAudio`, `lib/elevenlabs-tts.ts`'s `synthesizeSpeech`. Each wraps
   its `fetch` in try/finally (`clearTimeout` always runs), catches the
   resulting `AbortError`, and rethrows a distinct `"<Provider> ... timed
-  out"` `Error`. **No route changes** — confirmed first that
+out"` `Error`. **No route changes** — confirmed first that
   `app/api/chat/route.ts`, `app/api/transcribe/route.ts`, and
   `app/api/speak/route.ts` all wrap their provider call in a generic
   `catch (err)` that already maps any thrown `Error` to a 500 ("Upstream
@@ -174,7 +174,7 @@ update it whenever a unit's status changes.
   `npm run build` (route table unchanged) and `npm run lint` both clean.
   `npm test`: 137 passing, 2 failing — same pre-existing
   `test/queries-conversations-list.test.ts` `db.selectDistinct is not a
-  function` gap noted in Unit 10c's entry below, unrelated to this change.
+function` gap noted in Unit 10c's entry below, unrelated to this change.
   Manual verification: a temporary vitest file (fake timers + a `fetch` mock
   that hangs until its `AbortSignal` fires) confirmed all three functions
   reject with their timeout message at exactly 15s; deleted after
@@ -223,7 +223,7 @@ update it whenever a unit's status changes.
   `npm test` (137 passing, 2 failing) all run. **The 2 failures are
   pre-existing and out of this unit's scope** — the same
   `test/queries-conversations-list.test.ts` `db.selectDistinct is not a
-  function` gap first flagged in this file's 2026-09-14 eighth-follow-up
+function` gap first flagged in this file's 2026-09-14 eighth-follow-up
   entry and repeated in Unit 8/Unit 9's entries; this unit's change touches
   neither `selectDistinct` nor that test file.
 
@@ -884,7 +884,7 @@ isValid, parse })`) replaces all four; `app/page.tsx` now just
      just call these and manage React state.
   4. **Audio size cap de-duplicated across the client/server seam.**
      `components/MicButton.tsx` had its own `MAX_AUDIO_BYTES_CLIENT = 1 *
-   1024 * 1024`, duplicating `app/api/transcribe/validate.ts`'s
+1024 * 1024`, duplicating `app/api/transcribe/validate.ts`'s
      `MAX_AUDIO_BYTES` (the actual server-enforced invariant #6 value).
      `MicButton.tsx` now imports `MAX_AUDIO_BYTES` directly from
      `validate.ts` (confirmed safe: that file is pure/HTTP-free, no
@@ -1758,7 +1758,7 @@ DATABASE_URL app components` finds nothing. `architecture.md` updated:
   Unit 10 row was repointed to the 8 new files in the same change.
 - 2026-09-15: **History-list titles are now LLM-generated**, not the
   identical greeting text. Root cause: `listConversations`'s preview picked
-  the conversation's *first turn*, which is always the hardcoded greeting —
+  the conversation's _first turn_, which is always the hardcoded greeting —
   every history row showed "你好！今天想聊什么？" regardless of what was
   discussed (see screenshot in this session). Fix: `conversations` gained a
   nullable `title` column (migration `drizzle/0005_vengeful_bulldozer.sql`,
@@ -1767,7 +1767,7 @@ DATABASE_URL app components` finds nothing. `architecture.md` updated:
   DeepSeek call (`generateConversationTitle` in `lib/deepseek.ts`) that
   summarizes it into a 3-5 word English title via `setConversationTitle` —
   failure just leaves `title` null. `listConversations`'s preview fallback
-  was also fixed to use the first *user* turn instead of the first turn
+  was also fixed to use the first _user_ turn instead of the first turn
   overall, so older/untitled conversations degrade gracefully.
   `HistoryPanel.tsx` renders `title ?? preview`.
 

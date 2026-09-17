@@ -33,7 +33,7 @@ export async function synthesizeSpeech(text: string): Promise<ArrayBuffer> {
   if (!key) throw new Error("ELEVENLABS_API_KEY is not set");
   if (!voiceId) throw new Error("ELEVENLABS_VOICE_ID is not set");
 
-  const res = await fetchWithTimeout(
+  return await fetchWithTimeout(
     `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
     {
       method: "POST",
@@ -46,11 +46,17 @@ export async function synthesizeSpeech(text: string): Promise<ArrayBuffer> {
     },
     TIMEOUT_MS,
     "ElevenLabs TTS request",
+    async (res) => {
+      if (!res.ok) {
+        const detail = await res.text().catch((err) => {
+          if (err instanceof Error && err.name === "AbortError") throw err;
+          return "";
+        });
+        throw new Error(
+          `ElevenLabs TTS request failed: ${res.status} ${res.statusText}${detail ? ` — ${detail}` : ""}`,
+        );
+      }
+      return res.arrayBuffer();
+    },
   );
-  if (!res.ok) {
-    throw new Error(
-      `ElevenLabs TTS request failed: ${res.status} ${res.statusText}`,
-    );
-  }
-  return await res.arrayBuffer();
 }

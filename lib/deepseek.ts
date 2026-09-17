@@ -23,7 +23,7 @@ export async function callDeepSeek(messages: ChatMessage[]): Promise<string> {
   const key = process.env.DEEPSEEK_API_KEY;
   if (!key) throw new Error("DEEPSEEK_API_KEY is not set");
 
-  const res = await fetchWithTimeout(
+  return await fetchWithTimeout(
     `${BASE_URL}/chat/completions`,
     {
       method: "POST",
@@ -40,20 +40,22 @@ export async function callDeepSeek(messages: ChatMessage[]): Promise<string> {
     },
     TIMEOUT_MS,
     "DeepSeek request",
+    async (res) => {
+      if (!res.ok) {
+        throw new Error(
+          `DeepSeek request failed: ${res.status} ${res.statusText}`,
+        );
+      }
+      const data: unknown = await res.json();
+      const content = (
+        data as { choices?: { message?: { content?: unknown } }[] }
+      )?.choices?.[0]?.message?.content;
+      if (typeof content !== "string" || content.length === 0) {
+        throw new Error("DeepSeek response had no message content");
+      }
+      return content;
+    },
   );
-  if (!res.ok) {
-    throw new Error(
-      `DeepSeek request failed: ${res.status} ${res.statusText}`,
-    );
-  }
-  const data: unknown = await res.json();
-  const content = (
-    data as { choices?: { message?: { content?: unknown } }[] }
-  )?.choices?.[0]?.message?.content;
-  if (typeof content !== "string" || content.length === 0) {
-    throw new Error("DeepSeek response had no message content");
-  }
-  return content;
 }
 
 /**
