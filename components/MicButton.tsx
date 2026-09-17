@@ -358,6 +358,7 @@ export default function MicButton({
         />
         <button
           type="button"
+          aria-label="Hold to record a message in Chinese"
           aria-disabled={disabled}
           onPointerDown={handlePointerDown}
           onPointerUp={handlePointerUp}

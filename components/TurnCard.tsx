@@ -202,6 +202,7 @@ const TurnCard = forwardRef<HTMLDivElement, TurnCardProps>(function TurnCard(
               key={option}
               type="button"
               onClick={() => onRateChange(option)}
+              aria-pressed={rate === option}
               style={{
                 background: rate === option ? "var(--border-strong)" : "var(--surface)",
                 border: "1px solid var(--border)",
@@ -209,6 +210,11 @@ const TurnCard = forwardRef<HTMLDivElement, TurnCardProps>(function TurnCard(
                 color: "var(--ink)",
                 fontWeight: rate === option ? 600 : 400,
                 padding: "var(--space-1) var(--space-2)",
+                minWidth: 44,
+                minHeight: 44,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
                 fontSize: "0.75rem",
                 fontFamily: "var(--font-mono)",
                 cursor: "pointer",

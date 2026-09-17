@@ -121,6 +121,8 @@ function StatusLine({
   }[variant];
   return (
     <div
+      role="status"
+      aria-live="polite"
       style={{
         ...styles,
         borderRadius: "var(--radius-md)",
@@ -544,6 +546,8 @@ export default function ConversationScreen({
                 color: "var(--ink)",
                 cursor: "pointer",
                 padding: "var(--space-2) var(--space-3)",
+                minWidth: 44,
+                minHeight: 44,
                 fontFamily: "var(--font-sans)",
                 fontSize: "0.875rem",
               }}
@@ -577,6 +581,8 @@ export default function ConversationScreen({
                 color: "var(--ink)",
                 cursor: "pointer",
                 padding: "var(--space-2) var(--space-3)",
+                minWidth: 44,
+                minHeight: 44,
                 fontFamily: "var(--font-sans)",
                 fontSize: "0.875rem",
               }}

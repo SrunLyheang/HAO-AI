@@ -23,7 +23,8 @@ export default function ZhOnlyToggle({ checked, onChange }: ZhOnlyToggleProps) {
         background: "transparent",
         border: "none",
         cursor: "pointer",
-        padding: "var(--space-1) 0",
+        padding: "var(--space-3) 0",
+        minHeight: 44,
       }}
     >
       <span

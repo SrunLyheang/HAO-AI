@@ -54,7 +54,7 @@ export default function CorrectionDisclosure({
           style={{
             display: "inline-block",
             background: "var(--brand-accent)",
-            color: "var(--ink)",
+            color: "var(--brand-accent-text)",
             borderRadius: "var(--radius-full)",
             padding: "var(--space-1) var(--space-2)",
             fontSize: "0.6875rem",

@@ -12,13 +12,14 @@
   --warn-bg:#FBF3DB; --warn-text:#956400;
   --ok-bg:#EDF3EC; --ok-text:#346538;
   --err-bg:#FDEBEC; --err-text:#9F2F2D;
-  --brand-accent:#FF6B6B; --brand-accent-hover:#E85A5A; --brand-accent-text:#FFFFFF;
+  --brand-accent:#FF6B6B; --brand-accent-hover:#E85A5A; --brand-accent-text:#5C1414;
   --font-serif:'Newsreader','Instrument Serif','Noto Serif SC',Georgia,serif;
   --font-sans:'Geist Sans','SF Pro Text','Helvetica Neue',system-ui,sans-serif;
   --font-mono:'Geist Mono','SF Mono','JetBrains Mono',ui-monospace,monospace;
   --radius-sm:4px; --radius-md:8px; --radius-lg:12px; --radius-full:9999px;
   --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px;
   --space-6:24px; --space-8:32px; --space-12:48px; --space-16:64px;
+  --text-hero:clamp(1.75rem, 4vw, 2.25rem); --text-ui:1.0625rem;
 }
 
 :root[data-theme="dark"] {
