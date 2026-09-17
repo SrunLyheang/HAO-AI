@@ -31,9 +31,10 @@ sign-up open — anyone can create an account, no allowlist.
    ~20 sessions/month × ~15 minutes.
 6. Guarantee that no unauthenticated request ever reaches DeepSeek, Groq, or
    ElevenLabs, verified by an automated test per API route.
-7. Cap spend even under a client bug or abuse: per-user limits of 10 turns/minute
-   and 100 turns/day enforced server-side, plus a hard monthly spending cap set
-   in each provider dashboard.
+7. Cap spend even under a client bug or abuse: a shared per-user limit of 30
+   turns/minute and 300 turns/day (across transcribe/chat/speak) enforced
+   server-side, plus a hard monthly spending cap set in each provider
+   dashboard.
 8. Persist conversations so that reloading the page mid-conversation restores the
    full transcript, and the last 50 conversations per user remain openable from
    history.
@@ -89,9 +90,11 @@ sign-up open — anyone can create an account, no allowlist.
     archived to history and a fresh conversation with a new AI opening turn is
     started.
 18. The user taps the history icon. A panel lists past conversations, newest
-    first, each showing its date in monospace and the first line of its opening
-    turn. Tapping one loads that transcript read-only. A back action returns to
-    the live conversation.
+    first, each showing its date in monospace and either an LLM-generated
+    title (once DeepSeek has produced one, best-effort after the first user
+    turn) or, until then, the first line of its opening turn. Tapping one
+    loads that transcript read-only. A back action returns to the live
+    conversation.
 19. The user closes the tab. On the next visit, flow resumes at step 1; the last
     in-progress conversation is restored at step 4.
 
@@ -135,23 +138,33 @@ misfired in practice — see `progress-tracker.md`).
 ### History and persistence
 - Conversations and turns stored in Postgres (Neon) via Drizzle.
 - In-progress conversation restored on page load.
-- History panel: list of past conversations with date and preview, opened
-  read-only.
+- History panel: list of past conversations with date and a DeepSeek-generated
+  title (falls back to the opening line's preview until a title exists),
+  opened read-only. Conversations can also be deleted from history (the
+  active conversation cannot be).
 - Retention cap of 50 conversations per user; oldest pruned on overflow.
 
 ### Safety and cost control
-- Per-user rate limits: 10 turns/minute, 100 turns/day, enforced before any
-  provider call.
+- Per-user rate limits: shared bucket of 30 turns/minute, 300 turns/day across
+  transcribe/chat/speak, enforced before any provider call.
 - Input caps: audio ≤ 60 s and ≤ 1 MB (client-side), transcribed text ≤ 500
   characters (server-side).
+- 15s timeout on every outbound provider call (DeepSeek, Groq, ElevenLabs),
+  surfaced to the user as a recoverable error rather than hanging.
 - Hard monthly spending caps configured in Groq and ElevenLabs dashboards;
   DeepSeek balance is prepaid.
 - All provider API keys server-side only, never in the client bundle or
   responses.
 - Every database query scoped by Clerk user ID.
+- Offline detection and per-action loading/error states (transcribing,
+  fetching a reply, loading audio, loading history) so every failure path
+  shows a recoverable message instead of a blank screen or silent hang.
 
 ### Interface
-- Single screen plus Clerk sign-in; no other routes.
+- Single screen plus Clerk sign-in/sign-up; no other routes.
+- Light/dark theme toggle (top-right icon), persisted client-side; applied
+  before first paint to avoid a light-mode flash. Clerk's sign-in/sign-up
+  widgets follow the same toggle via a light/dark appearance config.
 - minimalist-ui visual language: warm off-white canvas, flat 1px borders, no
   drop shadows, Phosphor icons, no emoji, muted-pastel accents used only for
   semantic states.
@@ -191,9 +204,16 @@ misfired in practice — see `progress-tracker.md`).
 - Automatic and manual (replay) audio playback of AI turns.
 - Postgres (Neon) storage of settings, conversations, and turns via Drizzle.
 - Restore of the in-progress conversation on load.
-- History panel listing the last 50 conversations, opened read-only.
+- History panel listing the last 50 conversations (DeepSeek-generated titles,
+  delete support), opened read-only.
 - 25-turn cap per conversation with a forced new conversation.
-- Per-user rate limiting (10/minute, 100/day) and input size caps.
+- Per-user rate limiting (shared 30/minute, 300/day bucket) and input size
+  caps.
+- 15s timeout on every provider call, with a recoverable error on failure.
+- Offline detection and loading/error states across every provider-backed
+  action.
+- Light/dark theme toggle, persisted client-side, including Clerk's
+  sign-in/sign-up widgets.
 - Provider-side monthly spending caps.
 - minimalist-ui interface with Radix primitives, Tailwind, and Phosphor icons.
 - Deployment on Vercel with preview/production environment separation.
@@ -258,8 +278,9 @@ misfired in practice — see `progress-tracker.md`).
 - The history panel lists past conversations newest-first with date and preview
   text; opening one shows its transcript read-only; a 51st conversation removes
   the oldest.
-- Sending an 11th turn within one minute, or a 101st within one day, returns a
-  "slow down" state and triggers no provider call.
+- Sending a 31st turn within one minute, or a 301st within one day, across
+  transcribe/chat/speak combined, returns a "slow down" state and triggers no
+  provider call.
 - Uploading audio longer than 60 seconds or larger than 1 MB, or sending more
   than 500 characters of text, is rejected with a clear error and no provider
   call.

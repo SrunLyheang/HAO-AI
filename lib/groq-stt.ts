@@ -6,6 +6,8 @@
 // written to disk, retained in a module-level variable, or stored anywhere
 // (invariant 4).
 
+import { fetchWithTimeout } from "./fetch-with-timeout";
+
 const MODEL = process.env.GROQ_STT_MODEL ?? "whisper-large-v3-turbo";
 const TIMEOUT_MS = 15_000;
 
@@ -32,7 +34,11 @@ export function extractTranscript(data: unknown): string {
   const segments = (data as { segments?: unknown })?.segments;
   if (Array.isArray(segments) && segments.length > 0) {
     return (segments as Segment[])
-      .filter((s) => typeof s.no_speech_prob !== "number" || s.no_speech_prob < NO_SPEECH_PROB_THRESHOLD)
+      .filter(
+        (s) =>
+          typeof s.no_speech_prob !== "number" ||
+          s.no_speech_prob < NO_SPEECH_PROB_THRESHOLD,
+      )
       .map((s) => (typeof s.text === "string" ? s.text : ""))
       .join("")
       .trim();
@@ -72,29 +78,23 @@ export async function transcribeAudio(
   form.append("response_format", "verbose_json");
   if (forceZh) form.append("language", "zh");
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  let res: Response;
-  try {
-    res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+  return await fetchWithTimeout(
+    "https://api.groq.com/openai/v1/audio/transcriptions",
+    {
       method: "POST",
       headers: { authorization: `Bearer ${key}` },
       body: form,
-      signal: controller.signal,
-    });
-  } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") {
-      throw new Error("Groq transcription request timed out");
-    }
-    throw err;
-  } finally {
-    clearTimeout(timeout);
-  }
-
-  if (!res.ok) {
-    throw new Error(`Groq transcription request failed: ${res.status} ${res.statusText}`);
-  }
-
-  const data: unknown = await res.json();
-  return extractTranscript(data);
+    },
+    TIMEOUT_MS,
+    "Groq transcription request",
+    async (res) => {
+      if (!res.ok) {
+        throw new Error(
+          `Groq transcription request failed: ${res.status} ${res.statusText}`,
+        );
+      }
+      const data: unknown = await res.json();
+      return extractTranscript(data);
+    },
+  );
 }

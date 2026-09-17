@@ -12,14 +12,23 @@ import {
   Sun,
 } from "@phosphor-icons/react";
 import { UserButton } from "@clerk/nextjs";
-import type { Conversation, DisplaySupportMode, HskLevel, SpeakingRate, Turn } from "@/types";
+import type {
+  Conversation,
+  DisplaySupportMode,
+  HskLevel,
+  SpeakingRate,
+  Turn,
+} from "@/types";
 import MicButton from "@/components/MicButton";
 import HskPicker from "@/components/HskPicker";
 import ZhOnlyToggle from "@/components/ZhOnlyToggle";
 import DisplaySupportToggle from "@/components/DisplaySupportToggle";
 import TurnCard from "@/components/TurnCard";
 import HistoryPanel from "@/components/HistoryPanel";
-import { createPersistedPreference, themePreference } from "@/components/preference-store";
+import {
+  createPersistedPreference,
+  themePreference,
+} from "@/components/preference-store";
 import * as conversation from "@/components/conversation-client";
 
 const MAX_TURNS_PER_CONVERSATION = 25;
@@ -168,7 +177,9 @@ export default function ConversationScreen({
     () => false,
   );
   const [textScaleMessage, setTextScaleMessage] = useState<string | null>(null);
-  const textScaleMessageTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const textScaleMessageTimer = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const [micError, setMicError] = useState<string | null>(null);
   const zhOnlyMode = useSyncExternalStore(
     zhOnlyModePreference.subscribe,
@@ -180,6 +191,42 @@ export default function ConversationScreen({
     themePreference.read,
     themePreference.getServer,
   );
+  const themeToggleRef = useRef<HTMLButtonElement>(null);
+  const toggleTheme = () => {
+    const next = !darkMode;
+    const button = themeToggleRef.current;
+    if (!button || !document.startViewTransition) {
+      themePreference.persist(next);
+      return;
+    }
+    document
+      .startViewTransition(() => {
+        themePreference.persist(next);
+      })
+      .ready.then(() => {
+        const { top, left, width, height } = button.getBoundingClientRect();
+        const x = left + width / 2;
+        const y = top + height / 2;
+        const maxRadius = Math.hypot(
+          Math.max(x, window.innerWidth - x),
+          Math.max(y, window.innerHeight - y),
+        );
+        document.documentElement.animate(
+          {
+            clipPath: [
+              `circle(0px at ${x}px ${y}px)`,
+              `circle(${maxRadius}px at ${x}px ${y}px)`,
+            ],
+          },
+          {
+            duration: 700,
+            easing: "ease-in-out",
+            pseudoElement: "::view-transition-new(root)",
+          },
+        );
+      })
+      .catch(() => {});
+  };
   // Per-AI-turn playback speed (index -> rate), default 1x. Replaces the old
   // single app-wide rate switcher (see progress-tracker.md).
   const [turnRates, setTurnRates] = useState<Record<number, SpeakingRate>>({});
@@ -209,10 +256,12 @@ export default function ConversationScreen({
         return r.json();
       })
       .then((data: { hskLevel: HskLevel }) => {
-        if (!cancelled && !hskLevelUserChanged.current) setHskLevel(data.hskLevel);
+        if (!cancelled && !hskLevelUserChanged.current)
+          setHskLevel(data.hskLevel);
       })
       .catch(() => {
-        if (!cancelled) setError("Could not load your HSK level — using the default.");
+        if (!cancelled)
+          setError("Could not load your HSK level — using the default.");
       });
     return () => {
       cancelled = true;
@@ -236,13 +285,22 @@ export default function ConversationScreen({
   }
   function stepTextScale(direction: -1 | 1) {
     const i = TEXT_SCALES.indexOf(textScale);
-    const nextIndex = Math.min(TEXT_SCALES.length - 1, Math.max(0, i + direction));
+    const nextIndex = Math.min(
+      TEXT_SCALES.length - 1,
+      Math.max(0, i + direction),
+    );
     if (nextIndex === i) {
-      if (textScaleMessageTimer.current) clearTimeout(textScaleMessageTimer.current);
+      if (textScaleMessageTimer.current)
+        clearTimeout(textScaleMessageTimer.current);
       setTextScaleMessage(
-        direction === -1 ? "Smallest text size reached." : "Largest text size reached.",
+        direction === -1
+          ? "Smallest text size reached."
+          : "Largest text size reached.",
       );
-      textScaleMessageTimer.current = setTimeout(() => setTextScaleMessage(null), 2500);
+      textScaleMessageTimer.current = setTimeout(
+        () => setTextScaleMessage(null),
+        2500,
+      );
       return;
     }
     textScalePreference.persist(TEXT_SCALES[nextIndex]);
@@ -305,7 +363,8 @@ export default function ConversationScreen({
 
   useEffect(() => {
     return () => {
-      if (textScaleMessageTimer.current) clearTimeout(textScaleMessageTimer.current);
+      if (textScaleMessageTimer.current)
+        clearTimeout(textScaleMessageTimer.current);
     };
   }, []);
 
@@ -325,13 +384,18 @@ export default function ConversationScreen({
 
     const url = URL.createObjectURL(result.data);
     const audio = audioRef.current;
-    if (!audio) return;
+    if (!audio) {
+      URL.revokeObjectURL(url);
+      setPlayingIndex(null);
+      return;
+    }
     if (audio.src) URL.revokeObjectURL(audio.src);
     audio.src = url;
     audio.playbackRate = turnRates[index] ?? 1;
     try {
       await audio.play();
     } catch {
+      URL.revokeObjectURL(url);
       setSpeakError("Could not play audio — try again.");
       setPlayingIndex(null);
     }
@@ -339,7 +403,7 @@ export default function ConversationScreen({
 
   async function send(message: string) {
     message = message.trim();
-    if (!message || pending) return;
+    if (!message || pending || conversationFull || offline) return;
 
     // Optimistic — the server assigns the real id/createdAt on persistence
     // (appendTurnPair); this client-side placeholder is only ever rendered,
@@ -356,7 +420,12 @@ export default function ConversationScreen({
     setError(null);
     setPending(true);
 
-    const result = await conversation.reply(history, message, hskLevel, conversationId);
+    const result = await conversation.reply(
+      history,
+      message,
+      hskLevel,
+      conversationId,
+    );
     if (!result.ok) {
       setError(result.error);
     } else {
@@ -375,7 +444,8 @@ export default function ConversationScreen({
       setNewConversationPending(false);
       return;
     }
-    const data: { conversation: Conversation; turns: Turn[] } = await res.json();
+    const data: { conversation: Conversation; turns: Turn[] } =
+      await res.json();
     setConversationId(data.conversation.id);
     setHistory(data.turns);
     setTurnRates({});
@@ -531,8 +601,11 @@ export default function ConversationScreen({
           <HskPicker level={hskLevel} onChange={changeHskLevel} />
           <button
             type="button"
-            onClick={() => themePreference.persist(!darkMode)}
-            aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+            ref={themeToggleRef}
+            onClick={toggleTheme}
+            aria-label={
+              darkMode ? "Switch to light mode" : "Switch to dark mode"
+            }
             title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
             style={{
               background: "transparent",
@@ -543,7 +616,11 @@ export default function ConversationScreen({
               borderRadius: "var(--radius-sm)",
             }}
           >
-            {darkMode ? <Sun weight="bold" size={22} /> : <Moon weight="bold" size={22} />}
+            {darkMode ? (
+              <Sun weight="bold" size={22} />
+            ) : (
+              <Moon weight="bold" size={22} />
+            )}
           </button>
           <button
             type="button"
@@ -629,9 +706,15 @@ export default function ConversationScreen({
           const isLast = viewMode === "live" && i === history.length - 1;
           return (
             <TurnCard
-              key={i}
+              key={turn.id}
               ref={isLast ? lastTurnRef : undefined}
-              style={isLast ? { scrollMarginBottom: `calc(${footerHeight}px + var(--space-4))` } : undefined}
+              style={
+                isLast
+                  ? {
+                      scrollMarginBottom: `calc(${footerHeight}px + var(--space-4))`,
+                    }
+                  : undefined
+              }
               turn={turn}
               time={mounted ? formatTurnTime(turn.createdAt) : ""}
               textScale={textScale}
@@ -675,171 +758,192 @@ export default function ConversationScreen({
           {error && <StatusLine variant="error">{error}</StatusLine>}
           {micError && <StatusLine variant="error">{micError}</StatusLine>}
           {speakError && <StatusLine variant="error">{speakError}</StatusLine>}
-          {textScaleMessage && <StatusLine variant="ok">{textScaleMessage}</StatusLine>}
+          {textScaleMessage && (
+            <StatusLine variant="ok">{textScaleMessage}</StatusLine>
+          )}
           {viewMode === "live" && conversationFull && (
             <StatusLine variant="error">
               This conversation is full — start a new one to keep going.
             </StatusLine>
           )}
-          {transcribing && <StatusLine variant="live">Transcribing…</StatusLine>}
+          {transcribing && (
+            <StatusLine variant="live">Transcribing…</StatusLine>
+          )}
           {pending && <StatusLine variant="live">Thinking…</StatusLine>}
           {ttsLoading && <StatusLine variant="live">Loading audio…</StatusLine>}
         </div>
 
         {viewMode === "live" && (
-        <div
-          style={{
-            backdropFilter: "blur(8px)",
-            background: "color-mix(in srgb, var(--surface) 80%, transparent)",
-            borderTop: "1px solid var(--border)",
-            padding: "var(--space-3) var(--space-4)",
-            display: "grid",
-            gridTemplateColumns: "1fr auto 1fr",
-            alignItems: "center",
-            gap: "var(--space-3)",
-          }}
-        >
           <div
             style={{
-              display: "flex",
+              backdropFilter: "blur(8px)",
+              background: "color-mix(in srgb, var(--surface) 80%, transparent)",
+              borderTop: "1px solid var(--border)",
+              padding: "var(--space-3) var(--space-4)",
+              display: "grid",
+              gridTemplateColumns: "1fr auto 1fr",
               alignItems: "center",
               gap: "var(--space-3)",
-              justifySelf: "start",
             }}
           >
-            <button
-              type="button"
-              onClick={() =>
-                setInputMode((m) => (m === "talk" ? "type" : "talk"))
-              }
-              disabled={conversationFull}
-              aria-disabled={conversationFull}
+            <div
               style={{
-                background: "transparent",
-                border: "none",
-                color: conversationFull ? "var(--text-disabled)" : "var(--ink)",
-                cursor: conversationFull ? "not-allowed" : "pointer",
-                padding: "var(--space-3)",
-                borderRadius: "var(--radius-sm)",
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--space-3)",
+                justifySelf: "start",
               }}
-              aria-label={
-                inputMode === "talk" ? "Switch to typing" : "Switch to talking"
-              }
-              title={
-                inputMode === "talk" ? "Switch to typing" : "Switch to talking"
-              }
             >
-              {inputMode === "talk" ? (
-                <Keyboard weight="bold" size={24} />
-              ) : (
-                <Microphone weight="bold" size={24} />
-              )}
-            </button>
-          </div>
-
-          <div style={{ justifySelf: "center" }}>
-            {inputMode === "talk" ? (
-              <MicButton
-                onRecordingComplete={(blob) => void handleRecordedAudio(blob)}
-                onMicError={setMicError}
-                disabled={
-                  playingIndex !== null ||
-                  conversationFull ||
-                  pending ||
-                  transcribing ||
-                  offline
+              <button
+                type="button"
+                onClick={() =>
+                  setInputMode((m) => (m === "talk" ? "type" : "talk"))
                 }
-                disabledMessage={
-                  conversationFull
-                    ? "This conversation is full — start a new one to keep going."
-                    : offline
-                      ? "You're offline — reconnect to keep chatting."
-                      : pending || transcribing
-                        ? "Wait for the current message to finish."
-                        : MIC_BLOCKED_MESSAGE
-                }
-              />
-            ) : (
-              <div
+                disabled={conversationFull}
+                aria-disabled={conversationFull}
                 style={{
-                  display: "flex",
-                  gap: "var(--space-2)",
-                  width: "100%",
-                  maxWidth: 480,
+                  background: "transparent",
+                  border: "none",
+                  color: conversationFull
+                    ? "var(--text-disabled)"
+                    : "var(--ink)",
+                  cursor: conversationFull ? "not-allowed" : "pointer",
+                  padding: "var(--space-3)",
+                  borderRadius: "var(--radius-sm)",
                 }}
+                aria-label={
+                  inputMode === "talk"
+                    ? "Switch to typing"
+                    : "Switch to talking"
+                }
+                title={
+                  inputMode === "talk"
+                    ? "Switch to typing"
+                    : "Switch to talking"
+                }
               >
-                <input
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-                      e.preventDefault();
-                      void send(input);
-                    }
-                  }}
-                  placeholder="Type in Chinese…"
-                  style={{
-                    flex: 1,
-                    background: "var(--surface)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--radius-sm)",
-                    padding: "var(--space-3)",
-                    fontSize: "1.0625rem",
-                    color: "var(--text)",
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => void send(input)}
-                  disabled={pending || conversationFull || offline || input.trim().length === 0}
-                  title="Send"
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "var(--ink)",
-                    cursor: "pointer",
-                    opacity: pending || offline || input.trim().length === 0 ? 0.4 : 1,
-                    padding: "var(--space-3)",
-                  }}
-                >
-                  <PaperPlaneTilt weight="bold" size={24} />
-                </button>
-              </div>
-            )}
-          </div>
+                {inputMode === "talk" ? (
+                  <Keyboard weight="bold" size={24} />
+                ) : (
+                  <Microphone weight="bold" size={24} />
+                )}
+              </button>
+            </div>
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "var(--space-2)",
-              justifySelf: "end",
-            }}
-          >
-            {hasChatted && (
-              <span title="New conversation">
-                <button
-                  type="button"
-                  onClick={() => void startNewConversation()}
-                  disabled={newConversationPending}
-                  aria-disabled={newConversationPending}
-                  aria-label="New conversation"
+            <div style={{ justifySelf: "center" }}>
+              {inputMode === "talk" ? (
+                <MicButton
+                  onRecordingComplete={(blob) => void handleRecordedAudio(blob)}
+                  onMicError={setMicError}
+                  disabled={
+                    playingIndex !== null ||
+                    conversationFull ||
+                    pending ||
+                    transcribing ||
+                    offline
+                  }
+                  disabledMessage={
+                    conversationFull
+                      ? "This conversation is full — start a new one to keep going."
+                      : offline
+                        ? "You're offline — reconnect to keep chatting."
+                        : pending || transcribing
+                          ? "Wait for the current message to finish."
+                          : MIC_BLOCKED_MESSAGE
+                  }
+                />
+              ) : (
+                <div
                   style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "var(--ink)",
-                    cursor: newConversationPending ? "not-allowed" : "pointer",
-                    opacity: newConversationPending ? 0.4 : 1,
-                    padding: "var(--space-3)",
-                    borderRadius: "var(--radius-sm)",
+                    display: "flex",
+                    gap: "var(--space-2)",
+                    width: "100%",
+                    maxWidth: 480,
                   }}
                 >
-                  <Plus weight="bold" size={24} />
-                </button>
-              </span>
-            )}
+                  <input
+                    aria-label="Message in Chinese"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                        e.preventDefault();
+                        void send(input);
+                      }
+                    }}
+                    placeholder="Type in Chinese…"
+                    style={{
+                      flex: 1,
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "var(--radius-sm)",
+                      padding: "var(--space-3)",
+                      fontSize: "1.0625rem",
+                      color: "var(--text)",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void send(input)}
+                    disabled={
+                      pending ||
+                      conversationFull ||
+                      offline ||
+                      input.trim().length === 0
+                    }
+                    title="Send"
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: "var(--ink)",
+                      cursor: "pointer",
+                      opacity:
+                        pending || offline || input.trim().length === 0
+                          ? 0.4
+                          : 1,
+                      padding: "var(--space-3)",
+                    }}
+                  >
+                    <PaperPlaneTilt weight="bold" size={24} />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--space-2)",
+                justifySelf: "end",
+              }}
+            >
+              {hasChatted && (
+                <span title="New conversation">
+                  <button
+                    type="button"
+                    onClick={() => void startNewConversation()}
+                    disabled={newConversationPending}
+                    aria-disabled={newConversationPending}
+                    aria-label="New conversation"
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: "var(--ink)",
+                      cursor: newConversationPending
+                        ? "not-allowed"
+                        : "pointer",
+                      opacity: newConversationPending ? 0.4 : 1,
+                      padding: "var(--space-3)",
+                      borderRadius: "var(--radius-sm)",
+                    }}
+                  >
+                    <Plus weight="bold" size={24} />
+                  </button>
+                </span>
+              )}
+            </div>
           </div>
-        </div>
         )}
       </div>
 
