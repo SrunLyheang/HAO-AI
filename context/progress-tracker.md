@@ -16,22 +16,22 @@ update it whenever a unit's status changes.
 | 0a — Local skeleton | ✅ Done | committed `96fc49b` |
 | 0b — Deploy pipeline | ⏸ Deferred | blocked on user: Vercel project, env vars, Deployment Protection. Revisit once Units 1-9 are done, before Unit 10 ship (see "Deferred" below) |
 | 1 — Text conversation loop | ✅ Done | verified live, committed `7c7ebd9` |
-| 2 — HSK level control | 🟡 Implemented, unverified | automated checks (build/lint/test/curl) pass; manual browser check + commit still pending |
-| 3 — Voice input (STT) | 🟡 Implemented, unverified | automated checks pass; manual browser check (hold-to-record, mic-deny, 60s cap) + commit still pending |
-| 4 — Voice output (TTS) | 🟡 Implemented, unverified | automated checks pass; manual browser check (autoplay, replay, rate switch) + commit still pending |
-| 5 — One-screen + Siri mic | 🟡 Implemented, unverified | automated checks pass; manual browser check (real mic/provider round trip) + commit still pending |
+| 2 — HSK level control | ✅ Done | user confirmed verified 2026-09-17 |
+| 3 — Voice input (STT) | ✅ Done | user confirmed verified 2026-09-17 |
+| 4 — Voice output (TTS) | ✅ Done | user confirmed verified 2026-09-17 |
+| 5 — One-screen + Siri mic | ✅ Done | user confirmed verified 2026-09-17 |
 | 6 — Auth (Clerk) | ✅ Done | re-verified 2026-09-14, live browser flows exercised |
 | 7a — DB schema | ✅ Done | committed, migrations applied to real Neon DB |
 | 7b — Settings persistence | ✅ Done | committed, 98/98 tests pass |
-| 7c — Conversation persistence | 🟡 Implemented, unverified | automated checks pass; full signed-in reload/cross-profile walkthrough not done |
-| 8 — History + conversation lifecycle | 🟡 Implemented, unverified | base implementation + several user-reported follow-up fixes all landed; manual browser check still pending |
-| 9 — Rate limiting + spend guard | 🟡 Implemented, partially verified | scripted verification against real Neon DB done; 3-item manual provider-dashboard checklist (Groq/ElevenLabs/DeepSeek spend caps) handed to user, not code-doable |
-| 10a — Failure-state UI sweep | 🟡 Implemented, unverified | implemented 2026-09-15; automated checks pass; manual signed-in browser walkthrough of each failure path still pending (same environment limitation as every prior unit) |
+| 7c — Conversation persistence | ✅ Done | user confirmed verified 2026-09-17 |
+| 8 — History + conversation lifecycle | ✅ Done | user confirmed verified 2026-09-17 |
+| 9 — Rate limiting + spend guard | ✅ Done | user confirmed verified 2026-09-17 (includes the 3-item provider-dashboard checklist) |
+| 10a — Failure-state UI sweep | ✅ Done | user confirmed verified 2026-09-17 |
 | 10b — Provider call timeouts | ✅ Done | implemented 2026-09-15, 15s AbortController timeout on all 3 provider calls |
 | 10c — DB indexing / query shape | ✅ Done | implemented 2026-09-15, index applied to real Neon DB |
 | 10d–10g (pagination/upload/caching/observability) | ❌ Removed | assessed as not worth building at this app's current scale; specs deleted |
 | 10h — Concurrency/backup testing | ❌ Removed | user requested removal 2026-09-15 |
-| Dark mode | 🟡 Implemented, unverified | token-based; Clerk sign-in/sign-up card fixed 2026-09-15 (was hardcoded light regardless of theme); manual browser check pending |
+| Dark mode | ✅ Done | user confirmed verified 2026-09-17 |
 
 **Resolved 2026-09-15 (final production-readiness check):** `test/queries-conversations-list.test.ts`'s 2 pre-existing failures (`db.selectDistinct is not a function`, flagged repeatedly since 2026-09-14, unowned) are fixed. The mock in `vi.mock("@/db/index", ...)` never stubbed `db.selectDistinct(...).from(...).where(...)`, which `listConversations` started using to filter out archived greeting-only conversations. Added a `selectDistinctWhere` mock hook to the `vi.hoisted` block, wired per-test. Also caught a second, real drift while fixing it: the "no turns" test asserted `preview === ""`, but `db/queries.ts:293` had changed its fallback to `GREETING_ZH` (`"你好！今天想聊什么？"`) — the test's expectation was stale, not just its mock. Updated the assertion to match current intended behavior. `npm test`: 139/139 passing.
 
@@ -335,16 +335,10 @@ update it whenever a unit's status changes.
 
 ## Current Goal
 
-- Unit 8: implementation done, awaiting the manual browser check listed in
-  its own spec's "Manual browser check" section (history list contents,
-  read-only load, "New conversation", 25-turn cap) before it can be marked
-  fully verified.
-- Unit 6 auth: implementation done (bare `clerkMiddleware()`, the
-  server-side root auth check, `AuthShell`, and a separate `/sign-up`
-  route — see "Completed" below for how this design replaced the original
-  route-allowlist plan). **Remaining: a real signed-in browser check**
-  (reload mid-conversation, cross-profile check) — not possible from this
-  environment.
+- All units (2–9, 10a) and dark mode are user-confirmed verified as of
+  2026-09-17 — see Status table above. Next work item, if any, should be
+  picked from the "Deferred" note on Unit 0b (Vercel deploy pipeline) or a
+  new user request.
 
 ## Completed
 

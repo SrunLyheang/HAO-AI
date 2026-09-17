@@ -2,6 +2,8 @@
 // invariant 1, folder ownership). No parsing/validation here — the /api/chat
 // route validates the returned string against ChatResponse and owns the retry.
 
+import { fetchWithTimeout } from "./fetch-with-timeout";
+
 export type ChatMessage = {
   role: "system" | "user" | "assistant";
   content: string;
@@ -21,10 +23,9 @@ export async function callDeepSeek(messages: ChatMessage[]): Promise<string> {
   const key = process.env.DEEPSEEK_API_KEY;
   if (!key) throw new Error("DEEPSEEK_API_KEY is not set");
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  try {
-    const res = await fetch(`${BASE_URL}/chat/completions`, {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/chat/completions`,
+    {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -36,29 +37,23 @@ export async function callDeepSeek(messages: ChatMessage[]): Promise<string> {
         temperature: 0.3,
         response_format: { type: "json_object" },
       }),
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      throw new Error(
-        `DeepSeek request failed: ${res.status} ${res.statusText}`,
-      );
-    }
-    const data: unknown = await res.json();
-    const content = (
-      data as { choices?: { message?: { content?: unknown } }[] }
-    )?.choices?.[0]?.message?.content;
-    if (typeof content !== "string" || content.length === 0) {
-      throw new Error("DeepSeek response had no message content");
-    }
-    return content;
-  } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") {
-      throw new Error("DeepSeek request timed out");
-    }
-    throw err;
-  } finally {
-    clearTimeout(timeout);
+    },
+    TIMEOUT_MS,
+    "DeepSeek request",
+  );
+  if (!res.ok) {
+    throw new Error(
+      `DeepSeek request failed: ${res.status} ${res.statusText}`,
+    );
   }
+  const data: unknown = await res.json();
+  const content = (
+    data as { choices?: { message?: { content?: unknown } }[] }
+  )?.choices?.[0]?.message?.content;
+  if (typeof content !== "string" || content.length === 0) {
+    throw new Error("DeepSeek response had no message content");
+  }
+  return content;
 }
 
 /**

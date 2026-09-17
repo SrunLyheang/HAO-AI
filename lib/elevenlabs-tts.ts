@@ -17,6 +17,8 @@
 // HTMLAudioElement.playbackRate (app/page.tsx), which has no such limit —
 // this module always synthesizes at natural (1.0) speed.
 
+import { fetchWithTimeout } from "./fetch-with-timeout";
+
 const MODEL_ID = process.env.ELEVENLABS_MODEL_ID ?? "eleven_multilingual_v2";
 const TIMEOUT_MS = 15_000;
 
@@ -31,34 +33,24 @@ export async function synthesizeSpeech(text: string): Promise<ArrayBuffer> {
   if (!key) throw new Error("ELEVENLABS_API_KEY is not set");
   if (!voiceId) throw new Error("ELEVENLABS_VOICE_ID is not set");
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  try {
-    const res = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
-      {
-        method: "POST",
-        headers: {
-          "xi-api-key": key,
-          "content-type": "application/json",
-          accept: "audio/mpeg",
-        },
-        body: JSON.stringify({ text, model_id: MODEL_ID }),
-        signal: controller.signal,
+  const res = await fetchWithTimeout(
+    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
+    {
+      method: "POST",
+      headers: {
+        "xi-api-key": key,
+        "content-type": "application/json",
+        accept: "audio/mpeg",
       },
+      body: JSON.stringify({ text, model_id: MODEL_ID }),
+    },
+    TIMEOUT_MS,
+    "ElevenLabs TTS request",
+  );
+  if (!res.ok) {
+    throw new Error(
+      `ElevenLabs TTS request failed: ${res.status} ${res.statusText}`,
     );
-    if (!res.ok) {
-      throw new Error(
-        `ElevenLabs TTS request failed: ${res.status} ${res.statusText}`,
-      );
-    }
-    return await res.arrayBuffer();
-  } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") {
-      throw new Error("ElevenLabs TTS request timed out");
-    }
-    throw err;
-  } finally {
-    clearTimeout(timeout);
   }
+  return await res.arrayBuffer();
 }

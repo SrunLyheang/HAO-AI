@@ -202,7 +202,7 @@ export default function ConversationScreen({
         { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${maxRadius}px at ${x}px ${y}px)`] },
         { duration: 700, easing: "ease-in-out", pseudoElement: "::view-transition-new(root)" },
       );
-    });
+    }).catch(() => {});
   };
   // Per-AI-turn playback speed (index -> rate), default 1x. Replaces the old
   // single app-wide rate switcher (see progress-tracker.md).
@@ -349,13 +349,17 @@ export default function ConversationScreen({
 
     const url = URL.createObjectURL(result.data);
     const audio = audioRef.current;
-    if (!audio) return;
+    if (!audio) {
+      URL.revokeObjectURL(url);
+      return;
+    }
     if (audio.src) URL.revokeObjectURL(audio.src);
     audio.src = url;
     audio.playbackRate = turnRates[index] ?? 1;
     try {
       await audio.play();
     } catch {
+      URL.revokeObjectURL(url);
       setSpeakError("Could not play audio — try again.");
       setPlayingIndex(null);
     }
@@ -363,7 +367,7 @@ export default function ConversationScreen({
 
   async function send(message: string) {
     message = message.trim();
-    if (!message || pending) return;
+    if (!message || pending || conversationFull || offline) return;
 
     // Optimistic — the server assigns the real id/createdAt on persistence
     // (appendTurnPair); this client-side placeholder is only ever rendered,
@@ -654,7 +658,7 @@ export default function ConversationScreen({
           const isLast = viewMode === "live" && i === history.length - 1;
           return (
             <TurnCard
-              key={i}
+              key={turn.id}
               ref={isLast ? lastTurnRef : undefined}
               style={isLast ? { scrollMarginBottom: `calc(${footerHeight}px + var(--space-4))` } : undefined}
               turn={turn}
@@ -794,6 +798,7 @@ export default function ConversationScreen({
                 }}
               >
                 <input
+                  aria-label="Message in Chinese"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => {
