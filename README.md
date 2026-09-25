@@ -48,7 +48,4 @@ Copy `.env.example` to `.env.local` and fill in your own keys (`.env*` is
 git-ignored): DeepSeek, Groq, ElevenLabs, Clerk, a Neon `DATABASE_URL`, and a
 `CRON_SECRET` for the usage-cleanup cron route.
 
-## Deploy
 
-Push to `main` → Vercel builds and updates the production URL. A daily Vercel
-Cron job (`vercel.json`) prunes expired rate-limit records.
